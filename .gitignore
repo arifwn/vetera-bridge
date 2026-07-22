@@ -1,0 +1,16 @@
+# ESP-IDF build artifacts
+build/
+.cache/
+dependencies.lock
+sdkconfig
+sdkconfig.old
+managed_components/
+
+# BTstack upstream clone — fetched by the build instructions in README.md
+components/btstack/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
