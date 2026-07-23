@@ -2,12 +2,18 @@
  * wifi_multi.c — WiFi STA with a saved list of networks.
  *
  * Instead of satura-bridge's single SSID, up to WIFI_LIST_MAX networks are
- * stored in NVS (one blob, atomic save). A connect cycle is:
+ * stored in NVS (one blob, atomic save). WiFi connects as soon as a saved
+ * list is found at boot — it does not wait for a phone — and stays up
+ * indefinitely across phone connects/disconnects. A connect cycle is:
  *   scan → candidates = visible APs ∩ saved list (best RSSI first)
  *        → try each candidate (2 attempts) → all failed = one failed cycle
  *        → exponential backoff (satura's retry machinery) → rescan.
  * After WIFI_MAX_RETRIES failed cycles → APP_WIFI_FAILED, except while the
  * bridge is up (APP_BRIDGE_NO_WIFI) where it retries forever.
+ *
+ * While a phone has an open BT link but PPP/IPCP hasn't finished yet, scan
+ * and connect attempts are deferred (see wifi_bt_negotiating()) — the
+ * shared radio's disruption during a scan can break LCP/IPCP negotiation.
  */
 
 #include <string.h>
@@ -31,6 +37,8 @@ static const char *TAG = "wifi_multi";
 #define WIFI_RETRY_MAX_MS   30000
 #define CAND_MAX_ATTEMPTS   2           /* connect attempts per candidate */
 #define SCAN_MAX_RECORDS    24
+#define WIFI_NEGOTIATE_RECHECK_MS 3000  /* matches gateway.c's WIFI_KICK_DELAY_MS —
+                                          * long enough for LCP/IPCP to settle */
 
 typedef struct {
     char ssid[33];
@@ -240,6 +248,12 @@ struct esp_netif_obj *wifi_get_sta_netif(void) {
 // Scan-and-pick connect cycle
 // ============================================================
 
+/* True while a phone has an open BT link but hasn't finished PPP/IPCP yet —
+ * scanning or connecting here can disrupt LCP/IPCP on the shared radio. */
+static bool wifi_bt_negotiating(void) {
+    return get_bt_connected() && !ppp_link_up();
+}
+
 /* Start one scan+connect cycle. Callable from httpd / BTstack / timer
  * tasks — esp_wifi APIs are thread-safe. */
 void wifi_connect_begin(void) {
@@ -247,7 +261,12 @@ void wifi_connect_begin(void) {
         set_app_state(APP_NO_WIFI);
         return;
     }
-    if (get_wifi_connected() || scan_in_progress) return;
+    if (get_wifi_connected() || scan_in_progress || cand_count > 0) return;
+
+    if (wifi_bt_negotiating()) {
+        wifi_schedule_retry(WIFI_NEGOTIATE_RECHECK_MS);
+        return;
+    }
 
     /* Keep APP_BRIDGE_NO_WIFI visible while re-scanning after a loss —
      * the watchdog's stuck detection and endless-retry policy key off it. */
@@ -287,6 +306,12 @@ static void wifi_cycle_failed(void) {
 }
 
 static void wifi_try_candidate(void) {
+    if (wifi_bt_negotiating()) {
+        cand_count = 0;
+        wifi_schedule_retry(WIFI_NEGOTIATE_RECHECK_MS);
+        return;
+    }
+
     wifi_cred_t *c = &candidates[cand_index];
     ESP_LOGI(TAG, "trying '%s' (rssi %d, candidate %d/%d, attempt %d)",
              c->ssid, cand_rssi[cand_index], cand_index + 1, cand_count,
@@ -487,9 +512,15 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
 
         app_state_t st = get_app_state();
 
-        if (st == APP_WIFI_CONNECTING || st == APP_BRIDGE_NO_WIFI) {
+        if (st == APP_WIFI_CONNECTING || st == APP_BRIDGE_NO_WIFI ||
+            st == APP_WAIT_BT || st == APP_WIFI_FAILED) {
             /* mid candidate cycle? */
             if (cand_count > 0) {
+                if (wifi_bt_negotiating()) {
+                    cand_count = 0;
+                    wifi_schedule_retry(WIFI_NEGOTIATE_RECHECK_MS);
+                    return;
+                }
                 cand_attempts++;
                 if (cand_attempts < CAND_MAX_ATTEMPTS) {
                     esp_wifi_connect();     /* same candidate, retry */
@@ -594,9 +625,8 @@ void wifi_multi_init(void) {
 
     wifi_list.ver = 1;
     if (nvs_list_load() && wifi_list_count() > 0) {
-        ESP_LOGI(TAG, "%d saved network(s) — WiFi connects after PPP is up",
-                 wifi_list_count());
-        /* stay in APP_WAIT_BT: the connect kicks in after the phone dials */
+        ESP_LOGI(TAG, "%d saved network(s) — connecting now", wifi_list_count());
+        wifi_connect_begin();
     } else {
         set_app_state(APP_NO_WIFI);
     }

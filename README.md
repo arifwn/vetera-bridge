@@ -185,6 +185,16 @@ pre-PPP RX (n bytes): 'CLIENT'                         (phone's dial script)
 pre-PPP TX: replied to handshake                       (we say CLIENTSERVER)
 first PPP flag seen — handing link off to PPP
 PPP up, our 192.168.7.1 peer 192.168.7.2               (IPCP done)
+[STATE] ... -> BRIDGE_ACTIVE                           (NAPT enabled, WiFi already up)
+```
+
+WiFi connects on its own as soon as the bridge boots (if networks are saved)
+and stays connected across phone connects/disconnects — it does not wait
+for a phone. If the phone dials before WiFi has finished connecting, the
+log instead shows the scan/connect happening after PPP comes up:
+
+```
+PPP up, our 192.168.7.1 peer 192.168.7.2               (IPCP done)
 [STATE] WAIT_BT -> WIFI_SCAN -> WIFI_CONN              (3 s after PPP up)
 got IP, connected to '<ssid>'
 [STATE] ... -> BRIDGE_ACTIVE                           (NAPT enabled)
@@ -204,8 +214,13 @@ Heartbeat lines (`[HB] State:... | BT:... | PPP:... | WiFi:...`) appear every
 - `main/wifi_multi.c` — NVS-stored network list + scan-and-pick connect.
 - `main/gateway.c`, `web_ui.c`, `dns_fwd.c` — state machine, watchdogs, web
   UI and DNS derived from Satura Bridge's proven implementation.
-- WiFi connect is deliberately deferred until ~3 s after PPP is up so the
-  scan's radio disruption (single shared radio) doesn't break LCP/IPCP.
+- WiFi connects immediately at boot (if networks are saved) and stays up
+  indefinitely, independent of the phone — it is never torn down when the
+  phone disconnects. While a phone is mid-dial (BT connected, PPP not yet
+  up), scan/connect attempts are deferred ~3 s so the scan's radio
+  disruption (single shared radio) doesn't break LCP/IPCP; this covers both
+  the post-PPP-up kick and any WiFi retry cycle that happens to be running
+  when the phone dials in.
 - `-Os` (`CONFIG_COMPILER_OPTIMIZATION_SIZE`) is load-bearing: with `-Og`
   the BT + WiFi + PPP combination overflows ESP32 IRAM.
 
