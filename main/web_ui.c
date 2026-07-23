@@ -23,7 +23,7 @@ static const char *TAG = "web_ui";
 static httpd_handle_t http_server = NULL;
 
 #define PAGE_FOOTER \
-    "<hr><small>Vetera Bridge — internet for pre-PAN Bluetooth phones</small>"
+    "<hr><small>Vetera Bridge - internet for pre-PAN Bluetooth phones</small>"
 
 // ============================================================
 // Helpers (satura)
