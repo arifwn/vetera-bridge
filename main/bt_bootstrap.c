@@ -8,7 +8,10 @@
  *
  *   1. SDP-probe the phone (browse root) and log every RFCOMM service it
  *      exposes — the investigation step the whole plan depends on.
- *   2. Query specifically for a Serial Port (0x1101) class service.
+ *   2. Query for a Serial Port (0x1101) class service; if the phone
+ *      doesn't expose one, fall back to Dial-Up Networking (0x1103) —
+ *      many Nokia phones (e.g. 7610) expose modem/COM-port access only
+ *      as DUN, not raw SPP.
  *   3. If found: rfcomm_create_channel() into it, hold the link briefly,
  *      then disconnect. No data is sent or read — the act of connecting
  *      is the point, mimicking what a PC serial connection does.
@@ -41,14 +44,29 @@ typedef enum {
     BOOT_IDLE = 0,
     BOOT_WAIT_START,    /* delay timer running                  */
     BOOT_PROBE,         /* browse-root SDP query, log everything */
-    BOOT_TARGET,        /* 0x1101 query to pick the channel      */
+    BOOT_TARGET,        /* class-uuid query to pick the channel  */
     BOOT_CONNECT,       /* outgoing rfcomm_create_channel in flight */
     BOOT_HOLD,          /* channel open, hold timer running      */
 } boot_state_t;
 
+/* Tried in order until one yields a channel. Serial Port is the "proper"
+ * COM-port class, but plenty of phones (Nokia S60 in particular) only
+ * expose modem/COM-port access as Dial-Up Networking. */
+typedef struct {
+    uint16_t    class_uuid;
+    const char *label;
+} target_class_t;
+
+static const target_class_t target_classes[] = {
+    { BLUETOOTH_SERVICE_CLASS_SERIAL_PORT,       "Serial Port (0x1101)" },
+    { BLUETOOTH_SERVICE_CLASS_DIALUP_NETWORKING, "Dial-Up Networking (0x1103)" },
+};
+#define NUM_TARGET_CLASSES (sizeof(target_classes) / sizeof(target_classes[0]))
+
 static boot_state_t boot_state = BOOT_IDLE;
 static bd_addr_t    boot_addr;
 static uint8_t      target_channel = 0;
+static int          target_class_idx = 0;
 static uint16_t     boot_cid = 0;
 static btstack_timer_source_t boot_timer;
 
@@ -70,6 +88,7 @@ static void boot_reset(bool drop_acl) {
     }
     boot_state = BOOT_IDLE;
     target_channel = 0;
+    target_class_idx = 0;
     boot_cid = 0;
 }
 
@@ -140,9 +159,14 @@ static void boot_sdp_handler(uint8_t packet_type, uint16_t channel,
         case SDP_EVENT_QUERY_RFCOMM_SERVICE: {
             uint8_t ch = sdp_event_query_rfcomm_service_get_rfcomm_channel(packet);
             const char *name = sdp_event_query_rfcomm_service_get_name(packet);
-            ESP_LOGI(TAG, "[SDP] phone service: ch %u name '%s'%s",
-                     ch, name,
-                     boot_state == BOOT_TARGET ? " (serial-port class)" : "");
+            bool targeting = boot_state == BOOT_TARGET &&
+                              target_class_idx < (int)NUM_TARGET_CLASSES;
+            if (targeting) {
+                ESP_LOGI(TAG, "[SDP] phone service: ch %u name '%s' (%s)",
+                         ch, name, target_classes[target_class_idx].label);
+            } else {
+                ESP_LOGI(TAG, "[SDP] phone service: ch %u name '%s'", ch, name);
+            }
             if (boot_state == BOOT_TARGET && target_channel == 0 && ch != 0) {
                 target_channel = ch;
             }
@@ -159,13 +183,17 @@ static void boot_sdp_handler(uint8_t packet_type, uint16_t channel,
                     boot_reset(true);
                     break;
                 }
-                /* probe logged the full inventory; now pick by class */
+                /* probe logged the full inventory; now pick by class,
+                 * trying each candidate class in turn */
                 boot_state = BOOT_TARGET;
+                target_class_idx = 0;
+                ESP_LOGI(TAG, "querying for %s...",
+                         target_classes[target_class_idx].label);
                 uint8_t err = sdp_client_query_rfcomm_channel_and_name_for_service_class_uuid(
                         boot_sdp_handler, boot_addr,
-                        BLUETOOTH_SERVICE_CLASS_SERIAL_PORT);
+                        target_classes[target_class_idx].class_uuid);
                 if (err != 0) {
-                    ESP_LOGW(TAG, "serial-port SDP query didn't start (0x%02x)", err);
+                    ESP_LOGW(TAG, "target SDP query didn't start (0x%02x)", err);
                     boot_reset(true);
                 }
                 break;
@@ -173,13 +201,30 @@ static void boot_sdp_handler(uint8_t packet_type, uint16_t channel,
 
             /* BOOT_TARGET */
             if (target_channel == 0) {
-                ESP_LOGW(TAG, "phone exposes no serial-port (0x1101) service "
-                         "— nothing to bootstrap into (status 0x%02x)", status);
+                /* this class had nothing — try the next candidate class */
+                target_class_idx++;
+                if (target_class_idx < (int)NUM_TARGET_CLASSES) {
+                    ESP_LOGI(TAG, "no %s — querying for %s...",
+                             target_classes[target_class_idx - 1].label,
+                             target_classes[target_class_idx].label);
+                    uint8_t err = sdp_client_query_rfcomm_channel_and_name_for_service_class_uuid(
+                            boot_sdp_handler, boot_addr,
+                            target_classes[target_class_idx].class_uuid);
+                    if (err != 0) {
+                        ESP_LOGW(TAG, "target SDP query didn't start (0x%02x)", err);
+                        boot_reset(true);
+                    }
+                    break;
+                }
+                ESP_LOGW(TAG, "phone exposes none of the known modem/COM-port "
+                         "service classes — nothing to bootstrap into "
+                         "(status 0x%02x)", status);
                 boot_reset(true);
                 break;
             }
-            ESP_LOGI(TAG, "connecting into phone %s ch %u (one-shot)",
-                     bd_addr_to_str(boot_addr), target_channel);
+            ESP_LOGI(TAG, "connecting into phone %s ch %u (%s, one-shot)",
+                     bd_addr_to_str(boot_addr), target_channel,
+                     target_classes[target_class_idx].label);
             boot_state = BOOT_CONNECT;
             uint8_t err = rfcomm_create_channel(boot_rfcomm_handler, boot_addr,
                                                 target_channel, &boot_cid);
