@@ -52,13 +52,21 @@ static void set_no_cache(httpd_req_t *req, const char *type) {
 static esp_err_t redirect_to(httpd_req_t *req, const char *loc) {
     httpd_resp_set_status(req, "302 Found");
     httpd_resp_set_hdr(req, "Location", loc);
+    /* Old Opera (S60) will happily cache a bare 302 and keep replaying it
+     * for that URL even after the bridge comes back online — belt and
+     * braces since Cache-Control alone isn't always honored. */
+    httpd_resp_set_hdr(req, "Cache-Control",
+                       "no-cache, no-store, must-revalidate");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
+    httpd_resp_set_hdr(req, "Expires", "0");
     return httpd_resp_send(req, NULL, 0);
 }
 
-/* When not bridging, any request whose Host header is a domain (the phone
- * chasing a captive DNS answer) gets bounced to the gateway IP. */
+/* Any request whose Host header names a domain rather than the gateway
+ * itself gets bounced to the gateway IP — this also catches phones that
+ * cached the gateway's own IP for a real domain while we were offline
+ * and are still connecting to us out of habit after WiFi comes back. */
 static bool captive_check(httpd_req_t *req) {
-    if (get_app_state() == APP_BRIDGE) return true;
     char host[64] = {0};
     if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) == ESP_OK
         && strstr(host, GW_IP_STR) == NULL) {

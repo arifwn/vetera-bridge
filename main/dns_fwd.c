@@ -163,6 +163,32 @@ static int dns_make_captive_reply(const uint8_t *query, int qlen,
     return rlen;
 }
 
+/* Only generate a SERVFAIL for queries that fail to resolve while WiFi is
+ * up (e.g. a transient upstream timeout). Handing back the gateway's own
+ * IP in that case — like the captive fallback does — would poison the
+ * phone's DNS cache with a bogus mapping for a real domain, which then
+ * keeps landing on the local web UI even once the upstream is reachable
+ * again. */
+static int dns_make_servfail_reply(const uint8_t *query, int qlen,
+                                    uint8_t *reply, int rmax) {
+    if (qlen < 12 || rmax < 12) return 0;
+    if (qlen > 200) qlen = 200;
+    memcpy(reply, query, qlen > 12 ? 12 : qlen);
+    reply[0] = query[0]; reply[1] = query[1];
+    reply[2] = 0x81; reply[3] = 0x82; /* QR=1 AA=0 RCODE=2 (SERVFAIL) */
+    reply[4] = 0x00; reply[5] = 0x01; /* QDCOUNT=1 */
+    reply[6] = 0x00; reply[7] = 0x00; /* ANCOUNT=0 */
+    reply[8] = 0x00; reply[9] = 0x00;
+    reply[10]= 0x00; reply[11]= 0x00;
+    int rlen = 12;
+    int qsz  = qlen - 12;
+    if (qsz > 0 && rlen + qsz <= rmax) {
+        memcpy(reply + rlen, query + 12, qsz);
+        rlen += qsz;
+    }
+    return rlen;
+}
+
 static bool dns_forward(int ext_sock, struct sockaddr_in *ext_dns,
                          const uint8_t *query, int qlen,
                          uint8_t *reply, int *rlen) {
@@ -254,11 +280,12 @@ static void dns_server_task(void *arg) {
         struct sockaddr_in ext_dns;
         dns_get_upstream(&ext_dns);
 
+        bool wifi_up = get_wifi_connected();
         int rlen = 0;
         bool have_reply = dns_cache_lookup(query_buf, qlen, reply_buf, &rlen);
         if (!have_reply) {
             /* Only forward if WiFi is up, otherwise fall through to captive */
-            if (get_wifi_connected() &&
+            if (wifi_up &&
                 dns_forward(dns_ext_sock, &ext_dns,
                             query_buf, qlen, reply_buf, &rlen)) {
                 dns_cache_store(query_buf, qlen, reply_buf, rlen);
@@ -266,7 +293,12 @@ static void dns_server_task(void *arg) {
             }
         }
         if (!have_reply) {
-            rlen = dns_make_captive_reply(query_buf, qlen,
+            /* WiFi up but the upstream query failed/timed out: SERVFAIL,
+             * not the gateway's own IP — see dns_make_servfail_reply(). */
+            rlen = wifi_up
+                 ? dns_make_servfail_reply(query_buf, qlen,
+                                           reply_buf, sizeof(reply_buf))
+                 : dns_make_captive_reply(query_buf, qlen,
                                           reply_buf, sizeof(reply_buf));
         }
         if (rlen > 0) {
