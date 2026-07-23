@@ -14,3 +14,6 @@ components/btstack/
 .idea/
 *.swp
 *~
+
+.fastembed_cache
+.envrc

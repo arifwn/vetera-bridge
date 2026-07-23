@@ -185,6 +185,21 @@ static void wifi_kick_task(void *arg) {
     vTaskDelete(NULL);
 }
 
+/* Deferred, guarded WiFi kick — the scan monopolizes the shared radio for
+ * seconds, so anything that must still cross the BT link first (IPCP, an
+ * in-flight HTTP response) gets WIFI_KICK_DELAY_MS to finish. Safe from
+ * any task; the kick task re-checks conditions after the delay. */
+void gw_wifi_kick_deferred(void) {
+    bool already;
+    taskENTER_CRITICAL(&state_mux);
+    already = wifi_kick_running;
+    if (!already) wifi_kick_running = true;
+    taskEXIT_CRITICAL(&state_mux);
+    if (!already) {
+        gw_safe_task_create(wifi_kick_task, "wkick", 3072, NULL, 5, NULL);
+    }
+}
+
 /* tcpip task context — only flags, state and task spawns here */
 void gw_on_ppp_up(void) {
     if (get_wifi_connected()) {
@@ -195,14 +210,7 @@ void gw_on_ppp_up(void) {
         set_app_state(APP_NO_WIFI);
         return;
     }
-    bool already;
-    taskENTER_CRITICAL(&state_mux);
-    already = wifi_kick_running;
-    if (!already) wifi_kick_running = true;
-    taskEXIT_CRITICAL(&state_mux);
-    if (!already) {
-        gw_safe_task_create(wifi_kick_task, "wkick", 3072, NULL, 5, NULL);
-    }
+    gw_wifi_kick_deferred();
 }
 
 void gw_on_ppp_down(void) {
@@ -256,7 +264,49 @@ static void hci_packet_handler(uint8_t type, uint16_t ch,
             hci_event_user_confirmation_request_get_bd_addr(pkt, addr);
             gap_ssp_confirmation_response(addr);
             break;
-        default: break;
+        case HCI_EVENT_LINK_KEY_REQUEST:
+            hci_event_link_key_request_get_bd_addr(pkt, addr);
+            ESP_LOGI(TAG, "[HCI] Link key request from %s", bd_addr_to_str(addr));
+            break;
+        case HCI_EVENT_LINK_KEY_NOTIFICATION:
+            ESP_LOGI(TAG, "[HCI] Link key notification");
+            break;
+        case GAP_EVENT_PAIRING_COMPLETE: {
+            uint8_t pstatus = gap_event_pairing_complete_get_status(pkt);
+            gap_event_pairing_complete_get_bd_addr(pkt, addr);
+            ESP_LOGI(TAG, "[GAP] Pairing complete status=0x%02x addr=%s",
+                     pstatus, bd_addr_to_str(addr));
+            if (pstatus == 0) bt_bootstrap_on_pairing_complete(addr);
+            break;
+        }
+        case HCI_EVENT_AUTHENTICATION_COMPLETE:
+            ESP_LOGI(TAG, "[HCI] Authentication complete status=0x%02x handle=0x%04x",
+                     hci_event_authentication_complete_get_status(pkt),
+                     hci_event_authentication_complete_get_connection_handle(pkt));
+            break;
+        case HCI_EVENT_ENCRYPTION_CHANGE:
+            ESP_LOGI(TAG, "[HCI] Encryption change status=0x%02x enabled=%d handle=0x%04x",
+                     hci_event_encryption_change_get_status(pkt),
+                     hci_event_encryption_change_get_encryption_enabled(pkt),
+                     hci_event_encryption_change_get_connection_handle(pkt));
+            break;
+        case HCI_EVENT_COMMAND_STATUS: {
+            uint8_t st = hci_event_command_status_get_status(pkt);
+            if (st != 0) {
+                ESP_LOGW(TAG, "[HCI] Command status error=0x%02x opcode=0x%04x",
+                         st, hci_event_command_status_get_command_opcode(pkt));
+            }
+            break;
+        }
+        case HCI_EVENT_COMMAND_COMPLETE:
+        case HCI_EVENT_NUMBER_OF_COMPLETED_PACKETS:
+            /* Routine/high-frequency — would flood the log for no diagnostic
+             * value (command_complete fires after every controller command,
+             * e.g. every RSSI poll). */
+            break;
+        default:
+            ESP_LOGI(TAG, "[HCI] event 0x%02x", hci_event_packet_get_type(pkt));
+            break;
     }
 }
 

@@ -72,6 +72,9 @@ A locally installed ESP-IDF v5.4.x works the same way without Docker.
 2. **Access point** named exactly `Bt` (gnubox looks it up by name):
    - Data bearer: `GSM data`, Dial-up number: `2222` (gnubox blanks it later)
    - Username `RasUser`, Prompt password `No`, Password `pass`
+   - Authentication: `Normal`, not `Secure` — this bridge has no PPP
+     authentication support at all (PAP/CHAP compiled out, see Design
+     notes), so `Secure` forces a CHAP request the ESP32 can't negotiate
    - Gateway IP: leave blank; Homepage: any plain-http page
 3. Install **gnubox** (S60 1st Ed build — Mika Raento's original, see his
    [archived page](https://web.archive.org/web/20080208122023/http://mikie.iki.fi/symbian/bt-ap.html)),
@@ -82,14 +85,43 @@ A locally installed ESP-IDF v5.4.x works the same way without Docker.
    built-in WAP `Services` browser) with access point `Bt` and load
    `http://192.168.7.1`. This works before any WiFi is configured.
    Add your WiFi network(s) on the `/wifi` page.
+   An official Opera Mobile build for S60 1st Edition (N-Gage etc.) is
+   still available from Opera's FTP archive:
+   <https://ftp.opera.com/pub/opera/series60/1.x/620/apac/opera_s60_620_asia_61_10.sis>
 5. Load a plain-HTTP page from the internet, e.g. `http://frogfind.com`.
    HTTPS-only sites will fail — that's the phone's ancient TLS, not the link.
 
 If the phone connects to nothing after gnubox, it may not have stored the
 picked device: some gnubox builds never write the default BT comm port.
-Fix: trigger the phone's mRouter to connect out once (connect to the phone's
-serial port from another device) so it stores the bridge as its default
-Bluetooth serial device.
+Symptom: the `Bt` access point's Dial-up number stays `2222` instead of
+being blanked, and the ESP32's serial log shows zero HCI activity at all
+(no connection request, nothing) when you try to browse — the phone isn't
+even attempting a Bluetooth connection.
+
+Fix that has worked in practice: in gnubox, switch `Options → 2box Direct`
+to `Infrared`, then switch it back to `Bluetooth → Vetera Bridge`. This
+re-triggers gnubox's CommDB rewrite and clears the stale dial-up number.
+Re-check the `Bt` access point afterward — Dial-up number should now be
+blank.
+
+If that doesn't work, the fallback from gnubox's own theory of the bug is
+to trigger the phone's mRouter to connect out once (connect to the phone's
+serial port from another Bluetooth device) so it stores the bridge as its
+default Bluetooth serial device. gnubox's own log at `c:\logs\gnubox` on
+the phone is the most direct way to tell which case you're in: if it shows
+a Bluetooth connect attempt failing, the mRouter theory holds; if it's
+empty, gnubox isn't being invoked at all and the phone is just trying to
+place a real call to `2222`.
+
+The firmware now automates that fallback (`main/bt_bootstrap.c`): right
+after a fresh pairing completes, the ESP32 SDP-probes the phone, logs every
+RFCOMM service it advertises (`[SDP] phone service: ch N name '...'`),
+connects once into the phone's Serial Port (0x1101) service, holds the
+link ~3 s and disconnects — the same registration a PC serial connection
+performs. It runs once per newly-paired address per boot, so to re-trigger
+it, remove and re-add the pairing on the phone (or just reboot the ESP32
+and pair again). After the `bootstrap link closed — done` log line, retry
+the gnubox dial.
 
 ## Monitor log walkthrough
 
@@ -100,6 +132,9 @@ A successful session looks like:
 incoming RFCOMM ch 3 from <phone> — accepting          (gnubox dial)
 RFCOMM channel opened, cid 0x..., max frame ...
 PPP server listening
+pre-PPP RX (n bytes): 'CLIENT'                         (phone's dial script)
+pre-PPP TX: replied to handshake                       (we say CLIENTSERVER)
+first PPP flag seen — handing link off to PPP
 PPP up, our 192.168.7.1 peer 192.168.7.2               (IPCP done)
 [STATE] WAIT_BT -> WIFI_SCAN -> WIFI_CONN              (3 s after PPP up)
 got IP, connected to '<ssid>'
@@ -132,8 +167,9 @@ gets a spec-correct Protocol-Reject.
 
 ## Status
 
-Builds clean against ESP-IDF v5.4.4 + BTstack v1.8.2. Not yet validated
-against real S60v1 hardware — bring-up reports welcome.
+Builds clean against ESP-IDF v5.4.4 + BTstack v1.8.2. Validated end-to-end
+against real S60v1 hardware (pairing → mRouter bootstrap → gnubox dial →
+PPP → web UI → WiFi NAT). Bring-up reports for other phones welcome.
 
 ## Credits & license
 

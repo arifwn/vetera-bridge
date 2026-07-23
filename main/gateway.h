@@ -51,6 +51,7 @@ void        gw_safe_task_create(TaskFunction_t fn, const char *name,
                                 UBaseType_t prio, TaskHandle_t *handle);
 uint32_t    uptime_seconds(void);
 void        bt_set_visible(bool v);
+void        gw_wifi_kick_deferred(void);               /* any task */
 void        gw_on_rfcomm_opened(uint16_t con_handle);  /* BTstack task */
 void        gw_on_rfcomm_closed(void);                 /* BTstack task */
 void        gw_on_ppp_up(void);                        /* tcpip task */
@@ -66,6 +67,10 @@ void update_nat(void);          /* callable from any task */
 
 /* sdp_lap.c */
 void sdp_register_lap_and_spp(uint8_t lap_channel, uint8_t spp_channel);
+
+/* bt_bootstrap.c — one-shot mRouter-registration connect into the phone
+ * after a fresh pairing (see PLANNED_UPDATE.md). BTstack task only. */
+void bt_bootstrap_on_pairing_complete(const uint8_t addr[6]);
 
 /* wifi_multi.c */
 #define WIFI_LIST_MAX 8

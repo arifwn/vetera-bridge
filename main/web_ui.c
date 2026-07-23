@@ -242,7 +242,10 @@ static esp_err_t handler_wifi_add(httpd_req_t *req) {
             ESP_LOGI(TAG, "added network '%s'", ssid);
             if (!get_wifi_connected() && wifi_list_count() > 0 &&
                 ppp_link_up()) {
-                wifi_connect_begin();
+                /* Deferred: an immediate scan steals the shared radio
+                 * before the redirect below reaches the phone, and the
+                 * browser hangs on the save. */
+                gw_wifi_kick_deferred();
             }
         }
     }

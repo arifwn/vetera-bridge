@@ -59,6 +59,19 @@ static struct netif ppp_netif;
 
 static uint8_t tx_chunk[PPP_TX_CHUNK_MAX];
 
+/* --- pre-PPP handshake (BTstack task only) ---
+ * gnubox redirects the phone's GSM-data bearer to the BT serial port, but
+ * the phone still runs its dial-up script against that "modem" before it
+ * starts PPP: Symbian's direct-connect CSY does the Microsoft DCC dance
+ * (sends "CLIENT", expects "CLIENTSERVER" back); other configurations
+ * talk AT commands and expect "CONNECT" to the dial. The canonical Linux
+ * gnubox server answers via chat 'CLIENT' 'CLIENTSERVER' — without a
+ * reply the phone never sends its first LCP frame and the link hangs at
+ * 0 bytes. Answer both dialects, then hand off to PPP for good at the
+ * first HDLC flag (0x7E). */
+static bool ppp_frame_seen = false;
+static const char *pre_ppp_reply = NULL;
+
 // ============================================================
 // NAT
 // ============================================================
@@ -216,6 +229,34 @@ static void ppp_session_stop(void) {
 // RFCOMM packet handler (BTstack task)
 // ============================================================
 
+/* Returns true if the data was consumed by the handshake (not PPP). */
+static bool pre_ppp_handshake(const uint8_t *pkt, uint16_t size, uint16_t cid) {
+    if (ppp_frame_seen) return false;
+    if (memchr(pkt, 0x7E, size) != NULL) {
+        ppp_frame_seen = true;
+        ESP_LOGI(TAG, "first PPP flag seen — handing link off to PPP");
+        return false;               /* feed this packet to PPP too */
+    }
+
+    char txt[41];
+    uint16_t n = size < (uint16_t)(sizeof(txt) - 1) ? size
+                                                    : (uint16_t)(sizeof(txt) - 1);
+    for (uint16_t i = 0; i < n; i++)
+        txt[i] = (pkt[i] >= 0x20 && pkt[i] < 0x7F) ? (char)pkt[i] : '.';
+    txt[n] = '\0';
+    ESP_LOGI(TAG, "pre-PPP RX (%u bytes): '%s'", size, txt);
+
+    if (strstr(txt, "CLIENT") != NULL) {
+        pre_ppp_reply = "CLIENTSERVER";
+    } else if (strstr(txt, "ATD") != NULL) {
+        pre_ppp_reply = "\r\nCONNECT 115200\r\n";
+    } else if (strstr(txt, "AT") != NULL) {
+        pre_ppp_reply = "\r\nOK\r\n";
+    }
+    if (pre_ppp_reply != NULL) rfcomm_request_can_send_now_event(cid);
+    return true;
+}
+
 static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel,
                                    uint8_t *packet, uint16_t size) {
     bd_addr_t addr;
@@ -227,6 +268,7 @@ static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel,
         ok = session_active && (channel == active_cid);
         taskEXIT_CRITICAL(&state_mux);
         if (ok && ppp != NULL) {
+            if (pre_ppp_handshake(packet, size, channel)) return;
             pppos_input_tcpip(ppp, packet, size);
         }
         return;
@@ -287,6 +329,8 @@ static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel,
             tx_notify_pending = false;
             taskEXIT_CRITICAL(&state_mux);
             tx_dropped = 0;
+            ppp_frame_seen = false;
+            pre_ppp_reply = NULL;
 
             if (!ppp_session_start()) {
                 rfcomm_disconnect(cid);
@@ -306,6 +350,18 @@ static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel,
             send_cid = active_cid;
             taskEXIT_CRITICAL(&state_mux);
             if (send_cid == 0) break;
+
+            if (pre_ppp_reply != NULL) {
+                uint8_t st = rfcomm_send(send_cid, (uint8_t *)pre_ppp_reply,
+                                         (uint16_t)strlen(pre_ppp_reply));
+                if (st == 0) {
+                    ESP_LOGI(TAG, "pre-PPP TX: replied to handshake");
+                    pre_ppp_reply = NULL;
+                } else {
+                    rfcomm_request_can_send_now_event(send_cid);
+                }
+                break;
+            }
 
             uint16_t mfs = rfcomm_get_max_frame_size(send_cid);
             if (mfs == 0 || mfs > sizeof(tx_chunk)) mfs = sizeof(tx_chunk);
