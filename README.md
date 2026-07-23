@@ -91,6 +91,23 @@ A locally installed ESP-IDF v5.4.x works the same way without Docker.
 5. Load a plain-HTTP page from the internet, e.g. `http://frogfind.com`.
    HTTPS-only sites will fail — that's the phone's ancient TLS, not the link.
 
+### Using the phone's built-in browser instead of Opera
+
+If you'd rather not install Opera, the built-in WAP `Services` browser can
+be used instead — but unlike Opera it doesn't speak plain HTTP directly, it
+only speaks WAP/WSP and needs a **WAP gateway** configured on the access
+point to translate that into HTTP on the ESP32/internet side. Set the
+access point's Gateway IP to a public WAP gateway's address instead of
+leaving it blank. A list of currently available public WAP gateways is
+maintained at
+<http://nbpfan.bs0dd.net/index.php?lang=eng&page=wap/main>.
+
+**Caution:** a public WAP gateway is an open proxy run by a stranger on the
+internet — every request and response, including anything you type into a
+form, passes through their server in the clear. Only use these for
+casual/retro browsing, and never enter passwords, personal details, or any
+other sensitive information through a random public gateway.
+
 If the phone connects to nothing after gnubox, it may not have stored the
 picked device: some gnubox builds never write the default BT comm port.
 Symptom: the `Bt` access point's Dial-up number stays `2222` instead of
