@@ -1,3 +1,19 @@
+
+# Update 2026-07-29
+We might be looking at wrong place. We probably should connect to BTCOMM::5 instead. See the folowing excerpt from  /home/arif/Downloads/GnuBox on SonyEricsson P80x_P90x_P910 and Nokia Series60 phones.html :
+
+-------- BEGIN EXCERPT ---------
+You will probably notice that the PortName will show 'BTCOMM::0' for Bluetooth Auto, while 'BTCOMM::5' for any other Bluetooth options. This is the key difference.
+
+The mRouter client software in your phone creates a bluetooth serial port service in the phone. This is used to initate PC suite connection to your phone. If anybody connects to this service using bluetooth, then the connection gets terminated instantly (this is normal), the mRouter client software sets up BTCOMM::0 port to 'callback' to whatever bluetooth device and service just connected. Then it opens BTCOMM::0 thus effectively calling back.
+
+Thus if we use BTCOMM::0 then we do not need to setup the bluetooth communictions. This is easier and this is why it asks no questions about device or encryption. However, the config will be changed by mRouter upon an incoming bluetooth connection to the serial port service! That will be source of problems. Thus using the manual device, service and encryption selection (as required for 'BTCOMM::5') gives more stable results, while Auto selection is quicker but can go wrong time by time. Although it is fairly easy to fix by initiating a PC suite connection (once you recognize that it has gone wrong).
+
+To migrate from Auto to the fixed settings, you should probably choose 2box Bluetooth->Serial port, select your computer and set encryption properly.
+
+Note for later Nokia phones: Nokia has dropped the mRouter based PC suite connection method somewhere after the 6600. If you have a newer phone, then you probably do not even have a Serial port on your phone. This means there is nothing to connect to that would setup BTCOMM::0 to call back to your computer. Thus you can not use the 2box bluetooth->Auto method to connect. You always have to select from the other three 2box BT options and specify the device by hand.
+-------- END EXCERPT ---------
+
 # S60 2nd Edition (Nokia 7610) findings — 2026-07-24 session
 
 Status: **still not working end-to-end, but the failure is now precisely
