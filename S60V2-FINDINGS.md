@@ -1,6 +1,83 @@
 
-# Update 2026-07-29
-We might be looking at wrong place. We probably should connect to BTCOMM::5 instead. See the folowing excerpt from  /home/arif/Downloads/GnuBox on SonyEricsson P80x_P90x_P910 and Nokia Series60 phones.html :
+# Update 2026-07-29 — BTCOMM::5 tested and eliminated
+
+**Result: no change.** The 7610 was reconfigured from `2box → Direct over
+BT/Auto` (`PortName BTCOMM::0`) to `2box → Direct over BT/Serial`
+(`BTCOMM::5`, UUID `ESerialPortProfile` 0x1101, device stored explicitly),
+answering the encryption prompt with the **left** soft key. The failure is
+byte-for-byte the same shape as before: SDP search for 0x1101 → RFCOMM
+channel 4 opens → MSC `0x8d` exchanged both ways → credits granted → **zero
+user data** → clean `DISC` 5.99 s after open. `bring IF up` re-prompts for
+the access point in a loop; Opera reports "network problem".
+
+So the port-name distinction in the article excerpt below is **not** what was
+blocking us. Note also that every previous session ran on Auto/BTCOMM::0 —
+which per the excerpt should not work on a post-6600 Nokia at all, yet it
+dialled. The likely reason is `bt_bootstrap.c` connecting *into* the phone
+after pairing, standing in for the mRouter client that arms the callback
+port. Unverified: the decisive evidence would be that session's bootstrap SDP
+log, which was not kept.
+
+## New instrumentation and what it showed
+
+The experiment branch now logs the ACL's security state at RFCOMM open. On
+this run:
+
+```
+I (330281) ppp_link: link security: level=0 authenticated=0 key_size=0
+```
+
+and the trace for that ACL contains **no** PIN request, link-key request,
+`Authentication complete` or `Encryption change`. No security procedure ran
+on the link at all.
+
+Two cautions before reading anything into that:
+
+- **`authenticated=0` is not evidence.** For classic links BTstack's
+  `gap_authenticated()` is true only for SSP MITM-protected key types (see
+  `gap_authenticated_for_link_key_type` in `hci.c`). A legacy PIN-paired
+  phone like the 7610 produces a plain combination key and reads false even
+  on a link that *was* authenticated. Trust `level` and `key_size`.
+- **Absence of security is probably benign, not a broken config.** gnubox
+  always calls either `SetEncryption()` or `SetAuthentication()`
+  (`gnuboxContainer.cpp:1319-1372`), so a port with no requirement looks
+  wrong — but Symbian's BT security manager can satisfy "authentication
+  required" from an existing trusted bond without re-authenticating a fresh
+  ACL. Do not conclude the Bluetooth registry write failed without the
+  gnubox log.
+
+Worth knowing for any future check: on FP1 `NOBTREGISTRY` is not defined
+(it is FP2-only, `gnuboxPhone.h:58-60`), so gnubox stores BTCOMM::5's
+security level in the phone's **Bluetooth registry** via
+`CBTRegistry::SetDefaultCommPort` — *never* in CommsDB. A `commsdb.txt` dump
+can confirm `PortName` but can never show the security setting; the ESP32's
+HCI trace is the only observable.
+
+## Where this leaves the investigation
+
+The stall is still above RFCOMM, exactly where the 2026-07-24 session
+localized it, and the telephony pre-call hypothesis (item 1 below) is now the
+sole live one. Forcing encryption from the ESP32 side
+(`GW_REQUIRE_ENCRYPTION` on the experiment branch) tests whether *we* can
+encrypt, not whether the phone's CSY wanted encryption — low value, left off.
+
+Remaining leads, cheapest first:
+
+1. **2G registration.** Unchanged and still decisive. Independent of
+   everything tested here.
+2. **The gnubox log** (`c:\logs\gnubox\gnubox.txt`, create the folder first).
+   `SetupCSYL`'s `FLOG` breadcrumbs and `LogLeaveIfErrorL(err,"Setting BT
+   registry")` would say whether `SetDefaultCommPort` errored. Free, no
+   reflash.
+3. **Carrier-detect edge (untested, ESP32 side).** A real modem asserts DCD
+   only once the call connects; BTstack asserts `0x8d` (incl. DV) during
+   channel setup, before the app sees `RFCOMM_EVENT_CHANNEL_OPENED`, so the
+   phone never sees a 0→1 transition. `rfcomm_send_modem_status()` could
+   drop then re-assert DV. Weak: only produces a 1→0→1 sequence, which
+   Symbian may read as a dropped call, and MSC sits *below* the layer where
+   the failure was localized.
+
+The article excerpt that prompted this experiment, kept for reference:
 
 -------- BEGIN EXCERPT ---------
 You will probably notice that the PortName will show 'BTCOMM::0' for Bluetooth Auto, while 'BTCOMM::5' for any other Bluetooth options. This is the key difference.
