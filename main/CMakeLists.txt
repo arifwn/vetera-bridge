@@ -5,6 +5,7 @@ idf_component_register(
         "ppp_link.c"
         "sdp_lap.c"
         "bt_bootstrap.c"
+        "bt_name.c"
         "wifi_multi.c"
         "web_ui.c"
         "dns_fwd.c"

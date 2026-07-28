@@ -27,7 +27,11 @@
 #define GW_IP_STR "192.168.7.1"
 #define GW_PEER_IP3 2          /* phone gets 192.168.7.2 via IPCP */
 
-#define BT_LOCAL_NAME   "Vetera Bridge"
+/* Device name = BT_NAME_PREFIX + " " + a number derived from the BD_ADDR,
+ * unless a custom name is saved. See bt_name.c. */
+#define BT_NAME_PREFIX      "Vetera Bridge"
+#define BT_NAME_MAX         32     /* buffer for the full advertised name */
+#define BT_NAME_CUSTOM_MAX  24     /* longest custom name a user may set  */
 #define BT_LEGACY_PIN   "0000"
 
 typedef enum {
@@ -67,6 +71,17 @@ void update_nat(void);          /* callable from any task */
 
 /* sdp_lap.c */
 void sdp_register_lap_and_spp(uint8_t lap_channel, uint8_t spp_channel);
+
+/* bt_name.c — per-unit device name (derived from the BD_ADDR, or a custom
+ * name kept in NVS). */
+void bt_name_init(void);                /* before hci_power_on */
+void bt_name_apply_from_addr(void);     /* BTstack task, at HCI_STATE_WORKING */
+const char *bt_name_active_ptr(void);   /* for gap_set_local_name only —
+                                         * BTstack keeps this pointer */
+void bt_name_get(char *out, int out_len);         /* advertised name */
+void bt_name_get_custom(char *out, int out_len);  /* override, "" if unset */
+void bt_name_get_derived(char *out, int out_len); /* "" until the BT stack is up */
+void bt_name_set(const char *name);     /* any task; "" clears the override */
 
 /* bt_bootstrap.c — one-shot mRouter-registration connect into the phone
  * after a fresh pairing (see PLANNED_UPDATE.md). BTstack task only. */

@@ -230,6 +230,13 @@ static void hci_packet_handler(uint8_t type, uint16_t ch,
     if (type != HCI_EVENT_PACKET) return;
     bd_addr_t addr;
     switch (hci_event_packet_get_type(pkt)) {
+        case BTSTACK_EVENT_STATE:
+            /* The controller only reports its BD_ADDR once it is up, and the
+             * device name is derived from it — compose it now. */
+            if (btstack_event_state_get_state(pkt) == HCI_STATE_WORKING) {
+                bt_name_apply_from_addr();
+            }
+            break;
         case HCI_EVENT_CONNECTION_REQUEST:
             hci_event_connection_request_get_bd_addr(pkt, addr);
             ESP_LOGI(TAG, "[HCI] Connection request from %s",
@@ -374,7 +381,9 @@ static void watchdog_task(void *arg) {
 // ============================================================
 
 static void bt_setup(void) {
-    gap_set_local_name(BT_LOCAL_NAME);
+    /* Placeholder until BTSTACK_EVENT_STATE composes the real name — BTstack
+     * keeps this pointer and re-reads it on every name write. */
+    gap_set_local_name(bt_name_active_ptr());
     gap_discoverable_control(1);
     gap_connectable_control(1);
     gap_set_class_of_device(BT_CLASS_OF_DEVICE);
@@ -403,6 +412,7 @@ int btstack_main(int argc, const char *argv[]) {
         nvs_flash_init();
     }
 
+    bt_name_init();
     wifi_multi_init();
     dns_fwd_start();
     gw_safe_task_create(watchdog_task, "wdt", 4096, NULL, 2, NULL);
@@ -410,6 +420,8 @@ int btstack_main(int argc, const char *argv[]) {
     bt_setup();
     hci_power_control(HCI_POWER_ON);
 
+    /* The device name isn't known until the controller reports its address —
+     * bt_name.c logs it from the BTSTACK_EVENT_STATE handler. */
     ESP_LOGI(TAG, "Vetera Bridge up — pair from the phone (PIN %s), "
              "then dial via gnubox", BT_LEGACY_PIN);
     return 0;

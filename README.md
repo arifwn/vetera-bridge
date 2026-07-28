@@ -30,6 +30,9 @@ apps on the phone — just gnubox's one-time CommDB edit.
   (plain HTML — renders in Opera for S60v1), with captive-DNS redirect:
   open any http:// page before WiFi is configured and you land in setup
 - DNS forwarder with cache; legacy pairing with fixed PIN `0000`
+- **Per-unit Bluetooth name**: each bridge advertises `Vetera Bridge <number>`
+  derived from its own Bluetooth address, so several units can run at once
+  without being confused in the phone's device list; rename any unit on `/name`
 - Watchdogs: WiFi-stuck recovery, DNS-hang restart, low-heap reboot
 
 ## Hardware
@@ -68,7 +71,10 @@ A locally installed ESP-IDF v5.4.x works the same way without Docker.
 ## Phone setup (S60 1st Edition, e.g. N-Gage Classic)
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
-   device → select **Vetera Bridge** → PIN `0000`.
+   device → select **Vetera Bridge &lt;number&gt;** → PIN `0000`.
+   Each bridge names itself after its own Bluetooth address, so two units
+   powered on at once are told apart in the device list. You can give a unit a
+   friendlier name later on the `/name` page (see below).
 2. **Access point** named exactly `Bt` (gnubox looks it up by name):
    - Data bearer: `GSM data`, Dial-up number: `2222` (gnubox blanks it later)
    - Username `RasUser`, Prompt password `No`, Password `pass`
@@ -80,11 +86,12 @@ A locally installed ESP-IDF v5.4.x works the same way without Docker.
    [archived page](https://web.archive.org/web/20080208122023/http://mikie.iki.fi/symbian/bt-ap.html)),
    create `c:\logs\gnubox` on the phone, **back up the phone first** (gnubox
    rewrites CommDB), then run gnubox → `Options → 2box Direct → Bluetooth` →
-   pick **Vetera Bridge**.
+   pick your bridge.
 4. Open the browser (Opera recommended — it speaks plain HTTP, unlike the
    built-in WAP `Services` browser) with access point `Bt` and load
    `http://192.168.7.1`. This works before any WiFi is configured.
-   Add your WiFi network(s) on the `/wifi` page.
+   Add your WiFi network(s) on the `/wifi` page, and rename the unit on the
+   `/name` page if you run more than one bridge.
    An official Opera Mobile build for S60 1st Edition (N-Gage etc.) is
    still available from Opera's FTP archive:
    <https://ftp.opera.com/pub/opera/series60/1.x/620/apac/opera_s60_620_asia_61_10.sis>
@@ -116,7 +123,7 @@ being blanked, and the ESP32's serial log shows zero HCI activity at all
 even attempting a Bluetooth connection.
 
 Fix that has worked in practice: in gnubox, switch `Options → 2box Direct`
-to `Infrared`, then switch it back to `Bluetooth → Vetera Bridge`. This
+to `Infrared`, then switch it back to `Bluetooth → your bridge`. This
 re-triggers gnubox's CommDB rewrite and clears the stale dial-up number.
 Re-check the `Bt` access point afterward — Dial-up number should now be
 blank.
@@ -229,6 +236,10 @@ Heartbeat lines (`[HB] State:... | BT:... | PPP:... | WiFi:...`) appear every
 - `main/sdp_lap.c` — hand-built LAP SDP record (BTstack has no template for
   this deprecated profile).
 - `main/wifi_multi.c` — NVS-stored network list + scan-and-pick connect.
+- `main/bt_name.c` — the advertised device name. Composed once the controller
+  reports its BD_ADDR (`BTSTACK_EVENT_STATE` / `HCI_STATE_WORKING`), since the
+  default suffix is derived from that address; a custom name from `/name` is
+  kept in NVS and wins. Renames re-run `gap_set_local_name` on the BTstack task.
 - `main/gateway.c`, `web_ui.c`, `dns_fwd.c` — state machine, watchdogs, web
   UI and DNS derived from Satura Bridge's proven implementation.
 - WiFi connects immediately at boot (if networks are saved) and stays up

@@ -43,6 +43,22 @@ static void html_escape(const char *src, char *dst, size_t n) {
     dst[w] = 0;
 }
 
+/* application/x-www-form-urlencoded: '+' means space, %XX escapes */
+static void form_decode(const char *src, char *dst, size_t n) {
+    size_t w = 0;
+    for (const char *p = src; *p && w + 1 < n; p++) {
+        if (*p == '+') { dst[w++] = ' '; continue; }
+        if (*p == '%' && p[1] && p[2]) {
+            char hex[3] = { p[1], p[2], 0 };
+            dst[w++] = (char)strtol(hex, NULL, 16);
+            p += 2;
+            continue;
+        }
+        dst[w++] = *p;
+    }
+    dst[w] = 0;
+}
+
 static void set_no_cache(httpd_req_t *req, const char *type) {
     httpd_resp_set_type(req, type);
     httpd_resp_set_hdr(req, "Cache-Control",
@@ -101,6 +117,9 @@ static esp_err_t handler_root(httpd_req_t *req) {
     char ssid[33], ip[16], esc[80];
     wifi_get_current(ssid, sizeof(ssid), ip, sizeof(ip));
     html_escape(ssid, esc, sizeof(esc));
+    char name[BT_NAME_MAX], name_esc[BT_NAME_MAX * 6];
+    bt_name_get(name, sizeof(name));
+    html_escape(name, name_esc, sizeof(name_esc));
     uint32_t up = uptime_seconds();
     int refresh = (st == APP_WIFI_SCANNING || st == APP_WIFI_CONNECTING ||
                    st == APP_BRIDGE_NO_WIFI) ? 5 : 30;
@@ -108,14 +127,14 @@ static esp_err_t handler_root(httpd_req_t *req) {
     char *page = malloc(3072);
     if (!page) return ESP_ERR_NO_MEM;
     snprintf(page, 3072,
-        "<html><head><title>Vetera Bridge</title>"
+        "<html><head><title>%s</title>"
         "<meta charset='utf-8'>"
         "<meta http-equiv='refresh' content='%d'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<meta name='format-detection' content='telephone=no'>"
         "</head>"
         "<body style='font-family:sans-serif;padding:20px;text-align:center;'>"
-        "<h2>Vetera Bridge</h2><hr>"
+        "<h2>%s</h2><hr>"
         "<div style='text-align:left;background:#ecf0f1;padding:15px;'>"
         "<b>Status:</b> %s<br>"
         "<b>Phone link (PPP):</b> %s<br>"
@@ -129,10 +148,13 @@ static esp_err_t handler_root(httpd_req_t *req) {
         "</div><hr>"
         "<a href='/'>Reload</a><br>"
         "<a href='/wifi'>WiFi networks</a><br>"
+        "<a href='/name'>Device name</a><br>"
         "<a href='/reboot' style='color:#e74c3c;'>Reboot</a>"
         "<br>" PAGE_FOOTER
         "</body></html>",
+        name_esc,
         refresh,
+        name_esc,
         state_to_str(st),
         ppp_link_up() ? "up" : (get_bt_connected() ? "negotiating" : "down"),
         get_wifi_connected() ? "connected to" : "not connected",
@@ -222,29 +244,9 @@ static esp_err_t handler_wifi_add(httpd_req_t *req) {
     if (httpd_query_key_value(buf, "ssid", ns, sizeof(ns)) == ESP_OK) {
         httpd_query_key_value(buf, "pass", np, sizeof(np));
 
-        /* application/x-www-form-urlencoded: '+' means space, %XX escapes */
         char ssid[64] = {0}, pass[80] = {0};
-        size_t si = 0, pi = 0;
-        for (char *p = ns; *p && si + 1 < sizeof(ssid); p++) {
-            if (*p == '+') { ssid[si++] = ' '; continue; }
-            if (*p == '%' && p[1] && p[2]) {
-                char hex[3] = { p[1], p[2], 0 };
-                ssid[si++] = (char)strtol(hex, NULL, 16);
-                p += 2;
-                continue;
-            }
-            ssid[si++] = *p;
-        }
-        for (char *p = np; *p && pi + 1 < sizeof(pass); p++) {
-            if (*p == '+') { pass[pi++] = ' '; continue; }
-            if (*p == '%' && p[1] && p[2]) {
-                char hex[3] = { p[1], p[2], 0 };
-                pass[pi++] = (char)strtol(hex, NULL, 16);
-                p += 2;
-                continue;
-            }
-            pass[pi++] = *p;
-        }
+        form_decode(ns, ssid, sizeof(ssid));
+        form_decode(np, pass, sizeof(pass));
 
         if (wifi_list_add(ssid, pass)) {
             ESP_LOGI(TAG, "added network '%s'", ssid);
@@ -267,6 +269,73 @@ static esp_err_t handler_wifi_del(httpd_req_t *req) {
         wifi_list_remove(atoi(val));
     }
     return redirect_to(req, "/wifi");
+}
+
+static esp_err_t handler_name_get(httpd_req_t *req) {
+    if (!captive_check(req)) return ESP_OK;
+    set_no_cache(req, "text/html");
+
+    char cur[BT_NAME_MAX], custom[BT_NAME_MAX], derived[BT_NAME_MAX];
+    bt_name_get(cur, sizeof(cur));
+    bt_name_get_custom(custom, sizeof(custom));
+    bt_name_get_derived(derived, sizeof(derived));
+
+    char cur_esc[BT_NAME_MAX * 6], custom_esc[BT_NAME_MAX * 6];
+    char derived_esc[BT_NAME_MAX * 6];
+    html_escape(cur, cur_esc, sizeof(cur_esc));
+    html_escape(custom, custom_esc, sizeof(custom_esc));
+    html_escape(derived, derived_esc, sizeof(derived_esc));
+
+    char *page = malloc(2560);
+    if (!page) return ESP_ERR_NO_MEM;
+    snprintf(page, 2560,
+        "<html><head><title>Device Name</title>"
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='format-detection' content='telephone=no'>"
+        "</head>"
+        "<body style='font-family:sans-serif;padding:20px;text-align:center;'>"
+        "<h2>Device Name</h2><hr>"
+        "<div style='text-align:left;background:#ecf0f1;padding:15px;'>"
+        "<b>Shown to phones:</b> %s<br>"
+        "<b>Default for this unit:</b> %s"
+        "</div>"
+        "<form action='/name' method='post'>"
+        "<p>Custom name: (empty = use the default)<br>"
+        /* double quotes around value: html_escape covers " but not ' */
+        "<input type='text' name='name' size='20' maxlength='%d' value=\"%s\"></p>"
+        "<p><input type='submit' value='Save name' style='font-size:110%%;'></p>"
+        "</form>"
+        "<p style='text-align:left;'><small>The default number comes from this "
+        "unit's Bluetooth address, so every bridge differs. A phone caches the "
+        "name in its paired-devices list - it may keep showing the old one until "
+        "it searches for devices again.</small></p><hr>"
+        "<a href='/'>Status</a><br>"
+        "<a href='/wifi'>WiFi networks</a>"
+        "<br>" PAGE_FOOTER
+        "</body></html>",
+        cur_esc,
+        derived[0] ? derived_esc : "(waiting for Bluetooth)",
+        BT_NAME_CUSTOM_MAX, custom_esc);
+
+    esp_err_t r = httpd_resp_sendstr(req, page);
+    free(page);
+    return r;
+}
+
+static esp_err_t handler_name_post(httpd_req_t *req) {
+    char buf[192] = {0};
+    int rec = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (rec <= 0) return ESP_FAIL;
+    buf[rec] = '\0';
+
+    char raw[128] = {0};
+    if (httpd_query_key_value(buf, "name", raw, sizeof(raw)) == ESP_OK) {
+        char name[128] = {0};
+        form_decode(raw, name, sizeof(name));
+        bt_name_set(name);
+    }
+    return redirect_to(req, "/name");
 }
 
 static esp_err_t handler_reset(httpd_req_t *req) {
@@ -307,6 +376,8 @@ void web_ui_start(void) {
             { "/wifi",        HTTP_GET,  handler_wifi_get, NULL },
             { "/wifi/add",    HTTP_POST, handler_wifi_add, NULL },
             { "/wifi/del",    HTTP_GET,  handler_wifi_del, NULL },
+            { "/name",        HTTP_GET,  handler_name_get, NULL },
+            { "/name",        HTTP_POST, handler_name_post, NULL },
             { "/reset",       HTTP_GET,  handler_reset,    NULL },
             { "/reboot",      HTTP_GET,  handler_reboot,   NULL },
             { "/favicon.ico", HTTP_GET,  handler_favicon,  NULL },

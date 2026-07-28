@@ -134,12 +134,14 @@ static void boot_rfcomm_handler(uint8_t packet_type, uint16_t channel,
             break;
         }
 
-        case RFCOMM_EVENT_CHANNEL_CLOSED:
+        case RFCOMM_EVENT_CHANNEL_CLOSED: {
+            char name[BT_NAME_MAX];
+            bt_name_get(name, sizeof(name));
             ESP_LOGI(TAG, "bootstrap link closed — done. Retry the gnubox "
-                     "dial now (2box Direct -> Bluetooth -> %s)",
-                     BT_LOCAL_NAME);
+                     "dial now (2box Direct -> Bluetooth -> %s)", name);
             boot_reset(true);
             break;
+        }
 
         default:
             break;
