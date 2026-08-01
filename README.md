@@ -68,7 +68,7 @@ docker run --rm --device=/dev/ttyUSB0 -v "$PWD":/project -w /project \
 
 A locally installed ESP-IDF v5.4.x works the same way without Docker.
 
-## Phone setup (S60 1st Edition, e.g. N-Gage Classic)
+## Phone setup (S60 1st Edition. Tested on the N-Gage Classic and Nokia 3650)
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
    device → select **Vetera Bridge &lt;number&gt;** → PIN `0000`.
