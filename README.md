@@ -41,6 +41,33 @@ Original **ESP32** (ESP32-D0WD family) — it must have Bluetooth Classic.
 Later chips (S2/S3/C3/C6...) are BLE-only and will not work.
 An external antenna helps noticeably: BT and WiFi share one radio.
 
+## Flashing a prebuilt binary
+
+You don't need to build from source — grab the binaries from the
+[latest release](https://github.com/arifwn/vetera-bridge/releases/latest).
+
+**Option A — web flasher, no software install:**
+
+1. Open in Chrome or Edge: **<https://esp.huhn.me>** (Firefox does not
+   support WebSerial)
+2. Connect the ESP32 via USB
+3. Click **Connect** → select the device's serial port
+4. Click **Add File**, select the downloaded `vetera-bridge-vX.Y.Z-full-flash.bin`
+5. Set address to **0x0**
+6. Click **Program**, then **Reset** once it finishes
+
+**Option B — esptool (Python):**
+
+```sh
+pip install esptool
+python -m esptool --chip esp32 -p /dev/ttyUSB0 -b 460800 \
+    --before default_reset --after hard_reset write_flash \
+    0x0 vetera-bridge-vX.Y.Z-full-flash.bin
+```
+
+Adjust `/dev/ttyUSB0` to your serial port. Verify downloads against the
+release's `SHA256SUMS.txt`.
+
 ## Building
 
 Requires Docker only — nothing else installed on the host.
