@@ -5,7 +5,7 @@
 A sibling of [Satura Bridge](https://github.com/sigildeveloper/satura-bridge),
 for the older generation it can't reach. Satura Bridge gives internet to retro
 phones over **Bluetooth PAN** — but the oldest smartphones (Symbian 6.1 /
-S60 1st Edition: Nokia N-Gage, 7650, 3650...) predate PAN entirely. Vetera
+S60 1st Edition: Nokia N-Gage, 7650 and 3650) predate PAN entirely. Vetera
 Bridge covers them: the phone's own GSM-data dial-up stack is redirected to a
 Bluetooth serial (RFCOMM) link with **gnubox**, and the ESP32 terminates the
 resulting raw PPP connection and NATs it out over WiFi.
@@ -68,7 +68,7 @@ docker run --rm --device=/dev/ttyUSB0 -v "$PWD":/project -w /project \
 
 A locally installed ESP-IDF v5.4.x works the same way without Docker.
 
-## Phone setup (S60 1st Edition. Tested on the N-Gage Classic and Nokia 3650)
+## Phone setup (S60 1st Edition. Tested on the N-Gage Classic, Nokia 3650 and Nokia 7650)
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
    device → select **Vetera Bridge &lt;number&gt;** → PIN `0000`.
