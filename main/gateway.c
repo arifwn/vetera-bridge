@@ -4,6 +4,7 @@
  */
 
 #include <string.h>
+#include <stdio.h>
 #include <inttypes.h>
 
 #include "btstack_config.h"
@@ -112,6 +113,17 @@ int8_t get_bt_rssi(void) {
     v = bt_rssi;
     taskEXIT_CRITICAL(&state_mux);
     return v;
+}
+
+/* "-42" when polling is on, "n/a" when it is off — printing the untouched
+ * -100 sentinel would read as a real (terrible) signal reading. */
+const char *bt_rssi_str(char *buf, int len) {
+#if BT_RSSI_POLL
+    snprintf(buf, len, "%d", (int)get_bt_rssi());
+#else
+    strlcpy(buf, "n/a", len);
+#endif
+    return buf;
 }
 
 static hci_con_handle_t get_bt_handle(void) {
@@ -311,6 +323,15 @@ static void hci_packet_handler(uint8_t type, uint16_t ch,
              * value (command_complete fires after every controller command,
              * e.g. every RSSI poll). */
             break;
+        case HCI_EVENT_TRANSPORT_PACKET_SENT:
+            /* BTstack-internal (0x6E), not a Bluetooth event: fires once per
+             * HCI packet handed to the transport, so it tracks PPP traffic
+             * one-for-one. Logging it cost ~3 ms of blocking console UART per
+             * packet *inside the BTstack run loop* — at a few hundred packets
+             * a second the run loop cannot keep up with the controller at all.
+             * Same reason as the two above; it was missed because it is a
+             * BTstack define rather than a spec event code. */
+            break;
         default:
             ESP_LOGI(TAG, "[HCI] event 0x%02x", hci_event_packet_get_type(pkt));
             break;
@@ -321,6 +342,7 @@ static void hci_packet_handler(uint8_t type, uint16_t ch,
 // Watchdog & heartbeat
 // ============================================================
 
+#if BT_RSSI_POLL
 /* gap_read_rssi must run in the BTstack task */
 static void rssi_poll_cb(void *context) {
     (void)context;
@@ -332,6 +354,7 @@ static btstack_context_callback_registration_t rssi_cb_reg = {
     .callback = rssi_poll_cb,
     .context  = NULL,
 };
+#endif
 
 static void watchdog_task(void *arg) {
     (void)arg;
@@ -347,15 +370,18 @@ static void watchdog_task(void *arg) {
         bool b_conn = get_bt_connected();
         bool w_conn = get_wifi_connected();
 
+#if BT_RSSI_POLL
         btstack_run_loop_execute_on_main_thread(&rssi_cb_reg);
+#endif
 
         uint32_t up = uptime_seconds();
+        char rssi_buf[8];
         ESP_LOGI(TAG,
-            "[HB] State:%s | BT:%s RSSI:%d | PPP:%s txdrop:%" PRIu32
+            "[HB] State:%s | BT:%s RSSI:%s | PPP:%s txdrop:%" PRIu32
             " | WiFi:%s RSSI:%d | Heap:%dKB min:%dKB | Up:%" PRIu32
             "d %02" PRIu32 ":%02" PRIu32 ":%02" PRIu32,
             state_to_str(st),
-            b_conn ? "ON" : "OFF", (int)get_bt_rssi(),
+            b_conn ? "ON" : "OFF", bt_rssi_str(rssi_buf, sizeof(rssi_buf)),
             ppp_link_up() ? "UP" : "DOWN", ppp_link_tx_dropped(),
             w_conn ? "ON" : "OFF", (int)wifi_get_rssi(),
             (int)(free_heap / 1024), (int)(min_heap / 1024),

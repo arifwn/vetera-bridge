@@ -1,4 +1,18 @@
 # Bluetooth — BTstack host on the ESP32 controller
+#
+# Kconfig silently ignores unknown symbols here, and ignores plain "=n" on a
+# member of a choice group. Three lines below do nothing; they are kept only
+# because removing them would not change the build, and their names document
+# the intent:
+#   BT_BTSTACK_ENABLED    — no such symbol (BTstack is a plain component)
+#   BTSTACK_MESH_ENABLED  — no such symbol
+#   BT_BLUEDROID_ENABLED=n — member of the host choice; "=n" cannot deselect a
+#                            choice, so Bluedroid stays selected. Harmless in
+#                            practice: nothing calls esp_bluedroid_init(), so
+#                            the linker drops it (libbt.a is ~9 KB). To do it
+#                            properly, select the sibling instead:
+#                            CONFIG_BT_CONTROLLER_ONLY=y.
+# Always check the generated sdkconfig after touching this file.
 CONFIG_BT_ENABLED=y
 CONFIG_BT_CONTROLLER_ONLY=n
 CONFIG_BT_BLUEDROID_ENABLED=n
@@ -7,8 +21,17 @@ CONFIG_BTSTACK_INTERNAL_BT=y
 CONFIG_BTSTACK_AUDIO=n
 CONFIG_BTSTACK_MESH_ENABLED=n
 
-# Classic BT only (RFCOMM needs BR/EDR)
-CONFIG_BT_CONTROLLER_MODE_BR_EDR_ONLY=y
+# Classic BT only (RFCOMM needs BR/EDR).
+#
+# The symbol is BTDM_CTRL_MODE_*, not BT_CONTROLLER_MODE_*. This said
+# CONFIG_BT_CONTROLLER_MODE_BR_EDR_ONLY until v1.4.1 — a name that does not
+# exist in ESP-IDF, so it silently did nothing and the controller ran in its
+# default BLE-only mode with CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN_EFF=0: no
+# BR/EDR connection resources at all, while serving a BR/EDR RFCOMM link.
+# Basic linking still worked out of ROM, but the link manager would assert
+# (ASSERT_ERR(0) in lc_lmppdu.c, in r_lc_send_lmp) once it had to allocate.
+# Setting it correctly takes BR_EDR_MAX_ACL_CONN_EFF from 0 to 2.
+CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y
 
 # WiFi
 CONFIG_ESP_WIFI_ENABLED=y

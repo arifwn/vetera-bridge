@@ -237,6 +237,7 @@ static esp_err_t handler_root(httpd_req_t *req) {
     bool busy = (st == APP_WIFI_SCANNING || st == APP_WIFI_CONNECTING ||
                  st == APP_BRIDGE_NO_WIFI);
 
+    char rssi_buf[8];
     int bmc = bookmarks_count();
     size_t sz = 3072 + bm_escaped_total() + (size_t)bmc * 64;
     char *page = malloc(sz);
@@ -264,7 +265,7 @@ static esp_err_t handler_root(httpd_req_t *req) {
         "<b>WiFi:</b> %s %s<br>"
         "<b>WiFi IP:</b> %s<br>"
         "<b>WiFi RSSI:</b> %d dBm<br>"
-        "<b>BT RSSI:</b> %d dBm<br>"
+        "<b>BT RSSI:</b> %s<br>"
         "<b>Saved networks:</b> %d/%d<br>"
         "<b>Bookmarks:</b> %d/%d<br>"
         "<b>Uptime:</b> %" PRIu32 "d %02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 "<br>"
@@ -283,7 +284,7 @@ static esp_err_t handler_root(httpd_req_t *req) {
         get_wifi_connected() ? esc : "",
         ip,
         (int)wifi_get_rssi(),
-        (int)get_bt_rssi(),
+        bt_rssi_str(rssi_buf, sizeof(rssi_buf)),
         wifi_list_count(), WIFI_LIST_MAX,
         bmc, BM_MAX,
         up / 86400, (up % 86400) / 3600, (up % 3600) / 60, up % 60,

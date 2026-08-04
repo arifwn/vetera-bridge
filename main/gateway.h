@@ -34,6 +34,24 @@
 #define BT_NAME_CUSTOM_MAX  24     /* longest custom name a user may set  */
 #define BT_LEGACY_PIN   "0000"
 
+/* Periodic gap_read_rssi() for the status page's "BT RSSI" field.
+ *
+ * Off, but NOT because it is known to be harmful. It was switched off while
+ * chasing an ASSERT_ERR(0) in lc_lmppdu.c that killed the bridge within
+ * seconds of PPP coming up: the first two crashes both landed just after the
+ * first heartbeat, and this is the only Bluetooth call the heartbeat makes.
+ * That was a coincidence on two samples — the next crash arrived at 27 s with
+ * this already compiled out. The real cause was the controller running in
+ * BLE-only mode with zero BR/EDR connection resources (see sdkconfig.defaults);
+ * fixing that fixed the crash.
+ *
+ * So this is a suspect that was cleared, left off only because the firmware
+ * has now been soak-tested without it. Set to 1 to get the field back — worth
+ * doing, since BT signal strength is genuinely useful for antenna placement on
+ * a board that shares one radio between BT and WiFi. Re-test before relying
+ * on it. The status page and heartbeat show "n/a" while this is 0. */
+#define BT_RSSI_POLL    0
+
 typedef enum {
     APP_WAIT_BT,            /* discoverable, waiting for the phone */
     APP_NO_WIFI,            /* no WiFi networks configured */
@@ -62,6 +80,7 @@ void        gw_on_ppp_up(void);                        /* tcpip task */
 void        gw_on_ppp_down(void);                      /* tcpip task */
 bool        get_bt_connected(void);
 int8_t      get_bt_rssi(void);
+const char *bt_rssi_str(char *buf, int len);   /* "-42", or "n/a" if polling off */
 
 /* ppp_link.c */
 void ppp_link_init(void);       /* BTstack task, before hci_power_on */

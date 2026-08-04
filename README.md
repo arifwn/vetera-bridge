@@ -98,6 +98,19 @@ docker run --rm --device=/dev/ttyUSB0 -v "$PWD":/project -w /project \
 
 A locally installed ESP-IDF v5.4.x works the same way without Docker.
 
+**If you built a previous version in this tree, delete `sdkconfig` first:**
+
+```sh
+rm -f sdkconfig sdkconfig.old      # may need sudo: the Docker build writes it as root
+```
+
+`sdkconfig` is generated, gitignored, and **overrides `sdkconfig.defaults`** — so
+an existing one silently keeps the old settings and a pull that changes a
+default has no effect. That is how the v1.4.1 Bluetooth controller fix stays
+invisible if you skip this step. For the same reason, Kconfig does not complain
+about unknown symbols in `sdkconfig.defaults`: after changing anything there,
+check the value actually landed in the generated `sdkconfig`.
+
 ## Phone setup (S60 1st Edition. Tested on the N-Gage Classic, Nokia 3650 and Nokia 7650)
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
