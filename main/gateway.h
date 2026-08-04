@@ -34,23 +34,24 @@
 #define BT_NAME_CUSTOM_MAX  24     /* longest custom name a user may set  */
 #define BT_LEGACY_PIN   "0000"
 
-/* Periodic gap_read_rssi() for the status page's "BT RSSI" field.
+/* Periodic gap_read_rssi() for the status page's "BT RSSI" field: one poll per
+ * heartbeat (30 s) while a phone is connected.
  *
- * Off, but NOT because it is known to be harmful. It was switched off while
- * chasing an ASSERT_ERR(0) in lc_lmppdu.c that killed the bridge within
- * seconds of PPP coming up: the first two crashes both landed just after the
- * first heartbeat, and this is the only Bluetooth call the heartbeat makes.
- * That was a coincidence on two samples — the next crash arrived at 27 s with
- * this already compiled out. The real cause was the controller running in
- * BLE-only mode with zero BR/EDR connection resources (see sdkconfig.defaults);
- * fixing that fixed the crash.
+ * It spent a while switched off, but never because it was known to be harmful.
+ * It went off while chasing an ASSERT_ERR(0) in lc_lmppdu.c that killed the
+ * bridge within seconds of PPP coming up: the first two crashes both landed
+ * just after the first heartbeat, and this is the only Bluetooth call the
+ * heartbeat makes. That was a coincidence on two samples — the next crash
+ * arrived at 27 s with this already compiled out. The real cause was the
+ * controller running in BLE-only mode with zero BR/EDR connection resources
+ * (see sdkconfig.defaults); fixing that fixed the crash.
  *
- * So this is a suspect that was cleared, left off only because the firmware
- * has now been soak-tested without it. Set to 1 to get the field back — worth
- * doing, since BT signal strength is genuinely useful for antenna placement on
- * a board that shares one radio between BT and WiFi. Re-test before relying
- * on it. The status page and heartbeat show "n/a" while this is 0. */
-#define BT_RSSI_POLL    0
+ * Back on now, because BT signal strength is genuinely useful for antenna
+ * placement on a board that shares one radio between BT and WiFi. If a
+ * long-running bridge ever starts dying near a heartbeat again, this is the
+ * first suspect to set back to 0 — the status page and heartbeat just show
+ * "n/a" while it is off. */
+#define BT_RSSI_POLL    1
 
 typedef enum {
     APP_WAIT_BT,            /* discoverable, waiting for the phone */
