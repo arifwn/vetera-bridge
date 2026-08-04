@@ -111,6 +111,24 @@ invisible if you skip this step. For the same reason, Kconfig does not complain
 about unknown symbols in `sdkconfig.defaults`: after changing anything there,
 check the value actually landed in the generated `sdkconfig`.
 
+## Cutting a release
+
+`make-release.sh` builds the release binaries the way they are meant to be
+built — from a scrubbed tree, so a release can never ship a binary carrying
+settings from an old `sdkconfig`:
+
+```sh
+git tag -a v1.4.3 -m "v1.4.3" && git push origin v1.4.3
+./make-release.sh v1.4.3                        # assets in build/release/
+./make-release.sh v1.4.3 --publish notes.md     # ...and create the release
+```
+
+It refuses to run on a dirty tree, or when the tag exists but does not point at
+`HEAD`, and checks that the generated `sdkconfig` really came out in BR/EDR-only
+mode before it will hand you anything. Note that builds are not bit-for-bit
+reproducible: `CONFIG_APP_COMPILE_TIME_DATE` is on, so rebuilding the same
+commit gives a different app-image hash.
+
 ## Phone setup (S60 1st Edition. Tested on the N-Gage Classic, Nokia 3650 and Nokia 7650)
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
