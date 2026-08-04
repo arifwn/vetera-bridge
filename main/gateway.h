@@ -104,6 +104,25 @@ void wifi_watchdog_check(void); /* called each heartbeat from watchdog */
 struct esp_netif_obj;
 struct esp_netif_obj *wifi_get_sta_netif(void);
 
+/* bookmarks.c — shared bookmark list, so the phone never has to type a URL.
+ * Capped low on purpose: the limit is the page a 176x208 screen can render
+ * and the NVS partition shared with BTstack's link keys, not flash size. */
+#define BM_MAX          24
+#define BM_TITLE_MAX    32      /* incl. NUL */
+#define BM_URL_MAX      160     /* incl. NUL */
+
+typedef struct {
+    char title[BM_TITLE_MAX];
+    char url[BM_URL_MAX];
+} bookmark_t;
+
+void bookmarks_init(void);          /* load count; log NVS headroom */
+int  bookmarks_count(void);
+bool bookmarks_get(int index, bookmark_t *out);
+bool bookmarks_set(int index, const char *title, const char *url);
+                                    /* index < 0 appends */
+bool bookmarks_remove(int index);
+
 /* web_ui.c */
 void web_ui_start(void);
 

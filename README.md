@@ -26,6 +26,9 @@ apps on the phone — just gnubox's one-time CommDB edit.
   wire — every option old Symbian PPP stacks choke on is compiled out
 - **List of up to 8 WiFi networks**: scans and connects to the strongest
   saved network, with retry/backoff across the whole list
+- **Bookmarks** (up to 24) shown as tappable links on the bridge's home page,
+  so a phone never has to have a URL typed into it. Edit them from a PC on the
+  same WiFi, using a real keyboard — every phone that dials in gets the list
 - Web setup UI at **http://192.168.7.1** over the phone's own PPP link
   (plain HTML — renders in Opera for S60v1), with captive-DNS redirect:
   open any http:// page before WiFi is configured and you land in setup
@@ -124,6 +127,90 @@ A locally installed ESP-IDF v5.4.x works the same way without Docker.
    <https://ftp.opera.com/pub/opera/series60/1.x/620/apac/opera_s60_620_asia_61_10.sis>
 5. Load a plain-HTTP page from the internet, e.g. `http://frogfind.com`.
    HTTPS-only sites will fail — that's the phone's ancient TLS, not the link.
+
+### Bookmarks
+
+Typing an address on a keypad — especially the 3650's rotary one — gets old
+fast, and doing it once per phone is worse. Instead, keep the list on the
+bridge: bookmarks show up as tappable links right at the top of
+`http://192.168.7.1`, so browsing is open-the-page-and-select.
+
+Manage them on the `/bm` page. The web UI is reachable from any computer on
+the same WiFi as the bridge — use the **WiFi IP** shown on the status page,
+e.g. `http://192.168.1.42/bm` — so the typing happens on a real keyboard, once,
+and every phone that dials in sees the same list. The `/bm` page works from the
+phone too; it's the same page either way.
+
+- Up to **24** bookmarks. The limit is what a 176×208 screen can usefully
+  render, not flash: bookmarks share the ESP32's small NVS partition with the
+  WiFi list and the Bluetooth pairing keys, and staying well clear of it keeps
+  those safe. The boot log prints the actual NVS headroom
+  (`I (…) bookmarks: … NVS … free`) if you want to raise `BM_MAX` in
+  `main/gateway.h`.
+- `http://` is added for you if you leave it off. Addresses must be `http://`
+  or `https://`, and at most 159 characters.
+- Prefer plain `http://` targets — HTTPS won't load on an S60v1 phone.
+
+Bookmarks are an **Opera** feature. The built-in `Services` browser can't see
+them: it speaks WAP/WSP through a WAP gateway (see below), and a public gateway
+out on the internet has no route to `192.168.7.1` sitting behind your phone's
+PPP link.
+
+#### A starter list
+
+Finding sites an S60v1 phone can still open is most of the work — the modern
+web is HTTPS-only, and its TLS is far too old to negotiate with anything
+current. Every address below was checked to return **200 over plain HTTP with
+no HTTPS redirect**, which is the property that actually matters. Sizes are the
+homepage payload; anything much past ~50 KB starts to strain Opera on a 3650.
+
+**Search — the highest-value entries, since one bookmark reaches everything else**
+
+| Address | Size | |
+| --- | --- | --- |
+| `http://wiby.me` | 1.5 KB | Search engine built for old, lightweight pages |
+| `http://wiby.me/surprise/` | 440 B | A random classic-web page, one tap. Made for a keypad |
+| `http://frogfind.com` | 2 KB | Search, plus a reader that strips any page to bare HTML |
+
+**WAP portals that are still running**
+
+| Address | Size | |
+| --- | --- | --- |
+| `http://waptrick.com` | 5 KB | XHTML-MP. Themes, wallpapers, ringtones, J2ME games |
+| `http://zamob.com` | 5 KB | Same engine, different branding |
+| `http://dedomil.net` | | J2ME game archive, organised by handset |
+
+**Gopher over HTTP** — menus are plain text link lists, close to ideal on 176×208
+
+| Address | Size | |
+| --- | --- | --- |
+| `http://gopher.floodgap.com/gopher/` | 10 KB | Gateway into all of gopherspace |
+| `http://www.floodgap.com` | 16 KB | Cameron Kaiser's retro-computing site |
+
+**Text and retro archives**
+
+| Address | Size | |
+| --- | --- | --- |
+| `http://68k.news` | 4 KB | Current news, rendered for vintage browsers |
+| `http://www.textfiles.com/directory.html` | 5.8 KB | Better entry point than the root |
+| `http://info.cern.ch` | 646 B | The first website; every onward link is plain HTTP |
+| `http://oldcomputers.net` | 1.5 KB | |
+| `http://retrocomputing.net` | 6 KB | |
+| `http://sunsite.icm.edu.pl` | 3 KB | Long-running FTP/HTTP mirror |
+| `http://kolibrios.org/en` | 4.8 KB | An OS written in assembly |
+
+**Useful for setup**
+
+| Address | Size | |
+| --- | --- | --- |
+| `http://nbpfan.bs0dd.net` | 6.5 KB | The public WAP-gateway list — needed for the built-in browser, below |
+| `http://neverssl.com` | 4 KB | Guaranteed plain HTTP: a clean "is the bridge working" test |
+
+Two things worth knowing. Sites drift to HTTPS constantly, so a bookmark that
+worked last year may simply stop — if a page dies, that is usually why, not the
+bridge. And when a site you want is too heavy, bookmark it through FrogFind's
+reader instead: `http://frogfind.com/read.php?a=http://example.com/page` returns
+the same content as bare HTML, often several times smaller.
 
 ### Using the phone's built-in browser instead of Opera
 

@@ -8,6 +8,7 @@ idf_component_register(
         "bt_name.c"
         "wifi_multi.c"
         "web_ui.c"
+        "bookmarks.c"
         "dns_fwd.c"
 
     INCLUDE_DIRS "."

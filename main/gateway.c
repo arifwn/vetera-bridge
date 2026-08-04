@@ -413,6 +413,7 @@ int btstack_main(int argc, const char *argv[]) {
     }
 
     bt_name_init();
+    bookmarks_init();       /* before web_ui_start: the handlers read the count */
     wifi_multi_init();
     dns_fwd_start();
     gw_safe_task_create(watchdog_task, "wdt", 4096, NULL, 2, NULL);
