@@ -332,6 +332,8 @@ or "Enable Data Encryption" (BlueSoleil). The full investigation is in
 4. Install the matching gnubox: **-xan-'s v1.1 beta**, `gnubox_7610.sis`
    (shared with the 6670; the 3230, 6260 and 6620 have their own builds). Not
    Mika Raento's 6600 build, which targets a different comms architecture.
+   Download it from the
+   [archived gnubox page](https://web.archive.org/web/20080125044214/http://gnubox.dnsalias.org/gnubox/#download).
    **Back up the phone first** and create `c:\logs\gnubox`. Then run gnubox →
    `Options → Install → Create records`, exit gnubox with `Options → Exit` and
    relaunch it.
