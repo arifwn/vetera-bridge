@@ -1,3 +1,60 @@
+# Update 2026-10-31 — root cause: PHONETSY places a real CSD call
+
+**Conclusion: the 7610 cannot use the bridge with gnubox v1.1 on a SIM whose
+operator has no CSD, and no bridge change can fix it.** This settles the
+"telephony pre-call" hypothesis below.
+
+Session facts (7610 BT address `00:1B:EE:E1:3D:06`, SIM registered on 2G,
+operator does not support CSD, master firmware with full HCI trace):
+
+- After a fresh pairing, every dial fails with "network problem" in **2-3 s**
+  and the bridge receives **zero HCI packets** from the phone. Re-running
+  gnubox and power-cycling the phone change nothing. (Before re-pairing, some
+  dials did reach the bridge: an ACL plus a fresh PIN pairing, then a hang-up
+  about 4 s later with no SDP or RFCOMM. Same dead end.)
+- gnubox log: `BTCOMM CSY Configured.` with `3076f5e4aa06`, no errors. The
+  BT registry write is fine.
+- CommDB (`Cdbv3.dat`), record `GnuBoxModem`: `csd.agt`, `PPP`,
+  `BTCOMM::5`, **`PHONETSY`**, `BTCOMM`; ISP description `Direct 2box`.
+- gnubox v1.1 beta2 source, `src/gnuboxPhone.cpp` `PHONE_SETTINGS[]`: every
+  mode (Direct over BT/Serial, BT/LANAcc, BT/Dialup, BT/Auto, IR, Cable)
+  writes `TSYName = PHONETSY`. "BT/Dialup" is a Direct mode that only looks
+  up the DUN UUID instead of SPP. The older (S60v1-era) gnubox source did
+  blank the TSY in its Dialup mode ("It seems that doing this does the
+  trick"), so the phone would drive the far end as an AT modem. v1.1 dropped
+  that mode.
+- The 7610 has only `phonetsy.tsy` on Z:. No Hayes/MM TSY to swap in. It has
+  no Offline profile and will not boot without a SIM.
+
+So on FP1, `csd.agt` asks PHONETSY to set up a GSM data call before it opens
+the Bluetooth port, the network refuses it, and the dial ends before
+Bluetooth. S60v1 skips that step when the number is blank. The July runs (SIM
+with no registration) reached RFCOMM and then stalled for 6 s, the same
+pre-call failing more slowly.
+
+Bridge side, kept on master: a DUN (0x1103) SDP record on the SPP channel (no
+third RFCOMM service), and runtime debug switches on `/debug` (HCI packet
+trace, BTstack log, verbose), which replace the `GW_HCI_DUMP` compile flag.
+
+The experiment branches (`s60v2-7610-experiments`, `s60v2-3230-experiments`)
+are retired and deleted. What they held, and where it went:
+
+| Branch change | Status |
+|---|---|
+| `GW_HCI_DUMP` compile flag | Replaced by the `/debug` page on master |
+| Link-security log at RFCOMM open | On master, behind *Verbose bridge events* |
+| DUN 0x1103 record (own channel 2) | On master, sharing SPP channel 4 instead |
+| RFCOMM pools 2 → 4 + asserts | Not needed: master still has two RFCOMM services. The gotcha is recorded below and must come back with any third service |
+| Server-initiated LCP silence timer | Dropped: disproven (phone never answered) |
+| Remote modem status / RX-drop logging | Dropped: showed nothing wrong on our side |
+| `GW_REQUIRE_ENCRYPTION` | Dropped: never run, low value |
+| 3230 run plan | Now `S60V2-3230-PLAN.md` on master, not run yet |
+
+Remaining routes, none of them bridge work: a SIM on an operator that still
+accepts CSD calls, a custom "null" TSY DLL for the 7610 (pre-platform-security,
+so installable to `C:\system\libs\` and named only in `GnuBoxModem`), or a
+private GSM cell with CSD (osmo-bts).
+
 
 # Update 2026-07-29 — BTCOMM::5 tested and eliminated
 
@@ -215,8 +272,8 @@ suppressing in `gateway.c`'s default log case someday.
 
 ## Re-testing checklist (7610)
 
-- Firmware: branch `s60v2-7610-experiments` (has diagnostics; set
-  `GW_HCI_DUMP` to 0 in `gateway.c` unless full traces are needed).
+- Firmware: master. Turn on *HCI packet trace* on the `/debug` page for full
+  traces (the experiment branch these notes first referred to is retired).
 - Phone: gnubox v1.1 beta (`gnubox_7610.sis`), AP `Bt` per Schuon
   tutorial, login script set, dial-up number blank after 2box.
 - Re-pair after every ESP32 reboot (bootstrap is once-per-boot).

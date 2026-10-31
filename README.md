@@ -297,52 +297,28 @@ newly-paired address per boot, so to re-trigger it, remove and re-add the
 pairing on the phone (or just reboot the ESP32 and pair again). After the
 `bootstrap link closed — done` log line, retry the gnubox dial.
 
-## Open investigation: S60 2nd Edition phones never dial (6600/7610 family)
+## S60 2nd Edition (7610): blocked by the phone's telephony layer
 
-Tested on a **Nokia 7610** (S60 2nd Edition FP1) running a gnubox build
-targeted at the **6600** (also S60 2nd Ed) — a different Symbian generation
-than the S60 1st Edition hardware this project is validated against. Result:
-**still doesn't work**, even after fixing the two things we could fix:
+Not supported, and not fixable from the bridge. On a **Nokia 7610** (S60 2nd
+Edition FP1) with the matching gnubox (-xan-'s v1.1 beta, `gnubox_7610.sis`),
+every gnubox mode writes `TSYName = PHONETSY` into the modem record, including
+"Direct over BT/Dialup", which only changes the SDP UUID it looks up. On FP1
+that makes the dial agent ask the phone's own GSM stack to place a real
+**CSD data call** before it touches Bluetooth. With a SIM whose operator has
+dropped CSD (most, by now), the call is refused within 2-3 s and the phone
+shows "network problem". A full HCI trace on the bridge shows **zero packets**
+from the phone during the dial. S60 1st Edition phones skip that call when the
+dial-up number is blank, which is why they work.
 
-- The mRouter bootstrap (`main/bt_bootstrap.c`) originally only searched the
-  phone for a Serial Port (0x1101) service. The 7610 exposes no SPP at all —
-  only Dial-Up Networking (0x1103) at channel 2. Bootstrap now falls back to
-  DUN and **does** successfully connect into it, hold, and disconnect clean.
-- gnubox's CommDB rewrite also works correctly on this phone: the `Bt`
-  access point's dial-up number blanks out as expected after picking
-  **Vetera Bridge** in `2box Direct`.
+The 7610 ships no other TSY (only `phonetsy.tsy` on Z:), so there is nothing
+to point the modem record at instead. Ways it could still work: a SIM on an
+operator that still accepts CSD calls, a custom "null" TSY for the phone, or
+a private GSM cell with CSD. The full investigation is in
+[S60V2-FINDINGS.md](S60V2-FINDINGS.md).
 
-Despite both succeeding, the phone still never initiates an RFCOMM
-connection to the ESP32 when the `Bt` access point is used afterward — zero
-HCI activity on retry, every time. Confirmed via the phone side too: gnubox
-only edits CommDB (the APN bearer pointer + dial-up number); it does not
-drive the Bluetooth connection itself. Placing the actual call is entirely
-up to a native OS component (what gnubox's own notes call "mRouter") that
-apparently still isn't being triggered to dial out, even though every state
-we can directly influence checks out.
-
-Open question for future work: what does the native mRouter actually
-require before it will dial a Bluetooth-bearer access point? Candidates
-worth testing:
-
-- ESP32 may need to itself expose a Dial-Up Networking **gateway** service
-  (0x1103), not just LAP (0x1102) / SPP (0x1101) — S60 2nd Ed's Bluetooth
-  modem stack may specifically SDP-search for a DUN gateway before dialing,
-  since DUN's whole point is "use the remote device as your modem."
-- The CommDB field/table that names the Bluetooth modem bearer may differ
-  between S60 1st Ed and S60 2nd Ed (different comms architecture between
-  Symbian 6.1 and 7.0s), so the one-shot bootstrap trick may be solving the
-  wrong problem on this generation.
-- The phone may need a real DUN session (as the *data terminal*, dialing
-  through another device) to have completed at least once, caching modem
-  parameters, before it will treat a new paired device as a valid modem —
-  something stronger than the current one-shot "connect and disconnect"
-  bootstrap.
-
-S60 1st Edition (N-Gage Classic, 3650, 7650...) remains the fully validated,
-working path — that's what's documented and supported above. S60 2nd
-Edition (6600/7610 family) support is an open investigation, not working
-end-to-end yet.
+The bridge does advertise a Dial-Up Networking (0x1103) record next to LAP and
+Serial Port, on the Serial Port channel, and answers `AT`/`ATD` like a modem,
+for any phone setup that dials over DUN.
 
 ## Monitor log walkthrough
 
