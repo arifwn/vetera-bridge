@@ -22,9 +22,13 @@
 
 static uint8_t lap_record[200];
 static uint8_t spp_record[150];
+static uint8_t dun_record[200];
 
-static void create_lap_sdp_record(uint8_t *service, uint32_t record_handle,
-                                   uint8_t channel) {
+/* Shared builder for LAP (0x1102) and DUN gateway (0x1103) records:
+ * identical layout, different service-class UUID and name. */
+static void create_svc_sdp_record(uint8_t *service, uint32_t record_handle,
+                                   uint8_t channel, uint16_t service_class,
+                                   const char *name) {
     uint8_t *attribute;
     de_create_sequence(service);
 
@@ -33,13 +37,12 @@ static void create_lap_sdp_record(uint8_t *service, uint32_t record_handle,
                   BLUETOOTH_ATTRIBUTE_SERVICE_RECORD_HANDLE);
     de_add_number(service, DE_UINT, DE_SIZE_32, record_handle);
 
-    // 0x0001 ServiceClassIDList -> { LAN Access Using PPP }
+    // 0x0001 ServiceClassIDList -> { service_class }
     de_add_number(service, DE_UINT, DE_SIZE_16,
                   BLUETOOTH_ATTRIBUTE_SERVICE_CLASS_ID_LIST);
     attribute = de_push_sequence(service);
     {
-        de_add_number(attribute, DE_UUID, DE_SIZE_16,
-                      BLUETOOTH_SERVICE_CLASS_LAN_ACCESS_USING_PPP);
+        de_add_number(attribute, DE_UUID, DE_SIZE_16, service_class);
     }
     de_pop_sequence(service, attribute);
 
@@ -88,15 +91,14 @@ static void create_lap_sdp_record(uint8_t *service, uint32_t record_handle,
                   BLUETOOTH_ATTRIBUTE_SERVICE_AVAILABILITY);
     de_add_number(service, DE_UINT, DE_SIZE_8, 0xFF);
 
-    // 0x0009 BluetoothProfileDescriptorList -> { {LAP, v1.0} }
+    // 0x0009 BluetoothProfileDescriptorList -> { {service_class, v1.0} }
     de_add_number(service, DE_UINT, DE_SIZE_16,
                   BLUETOOTH_ATTRIBUTE_BLUETOOTH_PROFILE_DESCRIPTOR_LIST);
     attribute = de_push_sequence(service);
     {
         uint8_t *profile = de_push_sequence(attribute);
         {
-            de_add_number(profile, DE_UUID, DE_SIZE_16,
-                          BLUETOOTH_SERVICE_CLASS_LAN_ACCESS_USING_PPP);
+            de_add_number(profile, DE_UUID, DE_SIZE_16, service_class);
             de_add_number(profile, DE_UINT, DE_SIZE_16, 0x0100);
         }
         de_pop_sequence(attribute, profile);
@@ -104,15 +106,16 @@ static void create_lap_sdp_record(uint8_t *service, uint32_t record_handle,
     de_pop_sequence(service, attribute);
 
     // 0x0100 ServiceName
-    const char *name = "LAN Access Using PPP";
     de_add_number(service, DE_UINT, DE_SIZE_16, 0x0100);
     de_add_data(service, DE_STRING, (uint16_t)strlen(name), (uint8_t *)name);
 }
 
 void sdp_register_lap_and_spp(uint8_t lap_channel, uint8_t spp_channel) {
     memset(lap_record, 0, sizeof(lap_record));
-    create_lap_sdp_record(lap_record, sdp_create_service_record_handle(),
-                          lap_channel);
+    create_svc_sdp_record(lap_record, sdp_create_service_record_handle(),
+                          lap_channel,
+                          BLUETOOTH_SERVICE_CLASS_LAN_ACCESS_USING_PPP,
+                          "LAN Access Using PPP");
     btstack_assert(de_get_len(lap_record) <= sizeof(lap_record));
     sdp_register_service(lap_record);
 
@@ -121,4 +124,18 @@ void sdp_register_lap_and_spp(uint8_t lap_channel, uint8_t spp_channel) {
                           spp_channel, "Serial Port");
     btstack_assert(de_get_len(spp_record) <= sizeof(spp_record));
     sdp_register_service(spp_record);
+
+    /* DUN gateway (0x1103) on the SPP channel, so no third RFCOMM service
+     * is needed. gnubox "2box Dialup -> Bluetooth" searches for DUN and
+     * blanks the TSY, so the phone drives us as a Hayes modem (AT, ATD)
+     * instead of asking PHONETSY to place a GSM data call. That matters
+     * on S60v2 FP1, where "2box Direct" keeps PHONETSY and the dial dies
+     * on any SIM whose operator has dropped CSD. */
+    memset(dun_record, 0, sizeof(dun_record));
+    create_svc_sdp_record(dun_record, sdp_create_service_record_handle(),
+                          spp_channel,
+                          BLUETOOTH_SERVICE_CLASS_DIALUP_NETWORKING,
+                          "Dial-Up Networking");
+    btstack_assert(de_get_len(dun_record) <= sizeof(dun_record));
+    sdp_register_service(dun_record);
 }
