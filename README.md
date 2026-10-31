@@ -153,9 +153,10 @@ the default. With it on, an N-Gage QD cannot connect.
      authentication support at all (PAP/CHAP compiled out, see Design
      notes), so `Secure` forces a CHAP request the ESP32 can't negotiate
    - Gateway IP: leave blank; Homepage: any plain-http page
-3. Install **gnubox** (S60 1st Ed build — Mika Raento's original, see his
-   [archived page](https://web.archive.org/web/20080208122023/http://mikie.iki.fi/symbian/bt-ap.html)),
-   create `c:\logs\gnubox` on the phone, **back up the phone first** (gnubox
+3. Install **gnubox** (S60 1st Ed build, Mika Raento's original). Download it
+   from his
+   [archived gnubox page](https://web.archive.org/web/20080208122023/http://mikie.iki.fi/symbian/bt-ap.html).
+   Create `c:\logs\gnubox` on the phone, **back up the phone first** (gnubox
    rewrites CommDB), then run gnubox → `Options → 2box Direct → Bluetooth` →
    pick your bridge.
 4. Open the browser (Opera recommended — it speaks plain HTTP, unlike the
