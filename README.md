@@ -40,7 +40,8 @@ apps on the phone — just gnubox's one-time CommDB edit.
 - **Bluetooth security switch** on `/security`: makes the bridge authenticate
   and encrypt the link before a phone opens the serial channel. S60 2nd
   Edition phones with gnubox need it on; S60 1st Edition phones need it off
-  (the default)
+  (the default). Also switchable from the board's BOOT button, see
+  [Phone setup](#phone-setup-s60-2nd-edition-fp1-tested-on-the-nokia-7610)
 - **Debug logging switches** on `/debug`: HCI packet trace, BTstack's internal
   log and verbose bridge events, to the USB serial console. Kept across
   reboots, so a trace can cover pairing from power-on
@@ -320,13 +321,26 @@ what the old Windows tutorials meant by ticking "Secure Connections" (Widcomm)
 or "Enable Data Encryption" (BlueSoleil). The full investigation is in
 [S60V2-FINDINGS.md](S60V2-FINDINGS.md).
 
-1. **Turn on security**: open `/security` on the bridge, tick *Require
-   authentication and encryption* and save. The bridge reboots to apply it.
-   Do this from a PC on the same WiFi (at the bridge's WiFi IP) or from an
-   S60 1st Edition phone dialled in. **Known limitation:** a brand-new bridge
-   has no WiFi yet, and the 7610 cannot reach the web UI until security is
-   on, so a 7610 alone cannot set up a new unit. Configure WiFi and security
-   once with an S60 1st Edition phone first.
+1. **Turn on security**, either way:
+   - **BOOT button** (works on a brand-new bridge): ESP32 dev boards have
+     two buttons, one on each side of the USB port. Use the one labelled
+     **BOOT** (or **IO0**), not **EN** (or **RST**), which resets the board.
+     Which side each is on varies by board, so go by the printed label. If
+     it's unreadable, press each once: EN restarts the bridge, BOOT blinks
+     the LED.
+     - Once the bridge is up, hold BOOT for 3 s. The LED blinks 3 times
+       (security on) or once (off), and the bridge reboots to apply it after
+       you let go. Hold again to switch it back.
+     - A short press just blinks the current setting.
+     - The LED is the one on GPIO2, found on most ESP32 DevKit V1 boards. A
+       board without it still switches, just with no blink.
+   - **Web UI**: open `/security`, tick *Require authentication and
+     encryption* and save. The bridge reboots to apply it. Do this from a PC
+     on the same WiFi (at the bridge's WiFi IP) or from a phone dialled in.
+
+   Don't hold BOOT while plugging in or pressing EN/RESET: that starts the
+   ESP32's flashing mode instead. Once the 7610 is dialled in, set up WiFi
+   from `http://192.168.7.1` as usual.
 2. **Pair**: phone → Connectivity → Bluetooth → pair with **Vetera Bridge
    &lt;number&gt;** → PIN `0000`.
 3. **Access point** named exactly `Bt`, bearer **Data call** (not GPRS),
