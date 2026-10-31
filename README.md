@@ -164,9 +164,11 @@ the default. With it on, an N-Gage QD cannot connect.
    `http://192.168.7.1`. This works before any WiFi is configured.
    Add your WiFi network(s) on the `/wifi` page, and rename the unit on the
    `/name` page if you run more than one bridge.
-   An official Opera Mobile build for S60 1st Edition (N-Gage etc.) is
-   still available from Opera's FTP archive:
-   <https://ftp.opera.com/pub/opera/series60/1.x/620/apac/opera_s60_620_asia_61_10.sis>
+   Opera 6.20 for S60 1st Edition (N-Gage etc.) is still on Opera's FTP
+   archive, in three language sets. Take the `61_10` file (Symbian 6.1):
+   [English](https://ftp.opera.com/pub/opera/series60/1.x/620/americas/opera_s60_620_eng_61_10.sis),
+   [Europe](https://ftp.opera.com/pub/opera/series60/1.x/620/emea/opera_s60_620_euro_61_10.sis),
+   [Asia](https://ftp.opera.com/pub/opera/series60/1.x/620/apac/opera_s60_620_asia_61_10.sis).
 5. Load a plain-HTTP page from the internet, e.g. `http://frogfind.com`.
    HTTPS-only sites will fail — that's the phone's ancient TLS, not the link.
 
@@ -345,6 +347,11 @@ or "Enable Data Encryption" (BlueSoleil). The full investigation is in
    `78 Error = -3`. `Error = -6005` means the bridge's security switch is
    off (or not applied yet).
 7. Open Opera with access point `Bt` and load `http://192.168.7.1`.
+   Opera 8.65 for S60 2nd Edition is still on Opera's FTP archive, in three
+   language sets (Symbian 7.0s builds):
+   [Americas](https://ftp.opera.com/pub/opera/series60/2.x/865/americas/opera_s60_865_AMERICAS_70s_20.sis),
+   [Europe](https://ftp.opera.com/pub/opera/series60/2.x/865/emea/opera_s60_865_EMEA_70s_20.sis),
+   [Asia-Pacific](https://ftp.opera.com/pub/opera/series60/2.x/865/apac/opera_s60_865_APAC_70s_20.sis).
 
 Only the 7610 has been tested. The other FP1 phones gnubox v1.1 supports
 (3230, 6260, 6620, 6670) should behave the same with their own gnubox build.
