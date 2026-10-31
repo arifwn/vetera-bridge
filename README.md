@@ -37,6 +37,10 @@ apps on the phone — just gnubox's one-time CommDB edit.
   derived from its own Bluetooth address, so several units can run at once
   without being confused in the phone's device list; rename any unit on `/name`
 - Watchdogs: WiFi-stuck recovery, DNS-hang restart, low-heap reboot
+- **Bluetooth security switch** on `/security`: makes the bridge authenticate
+  and encrypt the link before a phone opens the serial channel. S60 2nd
+  Edition phones with gnubox need it on; S60 1st Edition phones need it off
+  (the default)
 - **Debug logging switches** on `/debug`: HCI packet trace, BTstack's internal
   log and verbose bridge events, to the USB serial console. Kept across
   reboots, so a trace can cover pairing from power-on
@@ -133,6 +137,9 @@ reproducible: `CONFIG_APP_COMPILE_TIME_DATE` is on, so rebuilding the same
 commit gives a different app-image hash.
 
 ## Phone setup (S60 1st Edition. Tested on the N-Gage Classic, Nokia 3650 and Nokia 7650)
+
+Leave the bridge's Bluetooth security switch (`/security`) **off**, which is
+the default. With it on, an N-Gage QD cannot connect.
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
    device → select **Vetera Bridge &lt;number&gt;** → PIN `0000`.
@@ -297,25 +304,51 @@ newly-paired address per boot, so to re-trigger it, remove and re-add the
 pairing on the phone (or just reboot the ESP32 and pair again). After the
 `bootstrap link closed — done` log line, retry the gnubox dial.
 
-## S60 2nd Edition (7610): not working, cause unknown
+## Phone setup (S60 2nd Edition FP1. Tested on the Nokia 7610)
 
-Not supported yet. On a **Nokia 7610** (S60 2nd Edition FP1) with the matching
-gnubox (-xan-'s v1.1 beta, `gnubox_7610.sis`), every dial fails with
-"network problem" within 2-3 s, and a full HCI trace on the bridge shows
-**zero packets** from the phone: the failure is inside the phone, before it
-ever pages the bridge. Earlier attempts did reach the bridge (and in July got
-as far as an open RFCOMM channel that never carried data), so this is not a
-hard limit of the phone.
-
-It is **not** the operator lacking CSD, which an earlier version of this
-README claimed: an N-Gage QD dials fine on the same no-CSD SIM with the same
-`PHONETSY` modem setting, and the 7610 fails identically with an inactive SIM.
-The investigation, with what has been ruled out and where to resume, is in
+S60 2nd Edition needs one thing S60 1st Edition must not have: **Bluetooth
+security on the bridge**. gnubox always puts a security requirement on the
+phone's Bluetooth serial port, and the phone then refuses an unencrypted link,
+but it never starts the authentication or encryption itself. It expects the
+other end to. Without it, the phone opens the bridge's serial channel, sends
+nothing, and hangs up after about 6 s ("network problem" in Opera). This is
+what the old Windows tutorials meant by ticking "Secure Connections" (Widcomm)
+or "Enable Data Encryption" (BlueSoleil). The full investigation is in
 [S60V2-FINDINGS.md](S60V2-FINDINGS.md).
 
-The bridge does advertise a Dial-Up Networking (0x1103) record next to LAP and
-Serial Port, on the Serial Port channel, and answers `AT`/`ATD` like a modem,
-for any phone setup that dials over DUN.
+1. **Turn on security**: open `/security` on the bridge, tick *Require
+   authentication and encryption* and save. The bridge reboots to apply it.
+   Do this from a PC on the same WiFi (at the bridge's WiFi IP) or from an
+   S60 1st Edition phone dialled in. **Known limitation:** a brand-new bridge
+   has no WiFi yet, and the 7610 cannot reach the web UI until security is
+   on, so a 7610 alone cannot set up a new unit. Configure WiFi and security
+   once with an S60 1st Edition phone first.
+2. **Pair**: phone → Connectivity → Bluetooth → pair with **Vetera Bridge
+   &lt;number&gt;** → PIN `0000`.
+3. **Access point** named exactly `Bt`, bearer **Data call** (not GPRS),
+   dial-up number something undiallable (e.g. `321`; gnubox blanks it),
+   Authentication `Normal`. The CLIENT/SERVER login script from the gnubox
+   tutorials is fine to set: the bridge answers it if the phone sends it.
+4. Install the matching gnubox: **-xan-'s v1.1 beta**, `gnubox_7610.sis`
+   (shared with the 6670; the 3230, 6260 and 6620 have their own builds). Not
+   Mika Raento's 6600 build, which targets a different comms architecture.
+   **Back up the phone first** and create `c:\logs\gnubox`. Then run gnubox →
+   `Options → Install → Create records`, exit gnubox with `Options → Exit` and
+   relaunch it.
+5. gnubox → `2box → Direct over BT/Serial` → pick the bridge. At "Do you want
+   to require encryption?" press the **left** soft key.
+6. **Check the link**: gnubox → `Options → Debug → Test comm channel`, then
+   open `c:\nokia\ctest.txt`. Healthy is `123456Error = 0` and
+   `78 Error = -3`. `Error = -6005` means the bridge's security switch is
+   off (or not applied yet).
+7. Open Opera with access point `Bt` and load `http://192.168.7.1`.
+
+Only the 7610 has been tested. The other FP1 phones gnubox v1.1 supports
+(3230, 6260, 6620, 6670) should behave the same with their own gnubox build.
+
+The bridge also advertises a Dial-Up Networking (0x1103) record next to LAP
+and Serial Port, on the Serial Port channel, and answers `AT`/`ATD` like a
+modem, for any phone setup that dials over DUN.
 
 ## Monitor log walkthrough
 
@@ -398,9 +431,8 @@ gets a spec-correct Protocol-Reject.
 
 Builds clean against ESP-IDF v5.4.4 + BTstack v1.8.2. Validated end-to-end
 against real S60v1 hardware (pairing → mRouter bootstrap → gnubox dial →
-PPP → web UI → WiFi NAT). S60 2nd Edition (6600/7610 family) does not dial
-yet — see "Open investigation" above. Bring-up reports for other phones
-welcome.
+PPP → web UI → WiFi NAT), and on the S60 2nd Edition FP1 Nokia 7610 with
+the `/security` switch on. Bring-up reports for other phones welcome.
 
 ## Credits & license
 

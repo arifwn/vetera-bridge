@@ -1,6 +1,84 @@
+# Update 2026-10-31 (later) — SOLVED: the bridge must start security
+
+**Status: working.** The 7610 dials the bridge and browses with Opera once
+the bridge requires an authenticated, encrypted link on RFCOMM. That is the
+`/security` switch in the web UI (`rfcomm_set_required_security_level(LEVEL_2)`
+in `ppp_link_init`, NVS key `btsec`, off by default, applied at boot). Setup
+steps are in the README.
+
+## How it was found
+
+gnubox's `Options → Debug → Test comm channel` (`routedump.cpp:414`) opens
+`BTCOMM::5` directly, with no connection agent and no TSY, writes
+`~mRouter - Are you there?~` and waits 20 s for a reply. It writes its result
+to `c:\nokia\ctest.txt`. With the bridge's security off:
+
+```
+123456Error = -6005
+78 Error = -6005
+```
+
+Both the write and the read fail with **-6005**: Symbian's HCI error base
+(-6000) minus HCI error 0x05, *Authentication Failure*. On the bridge, the
+same moment looks exactly like every failed dial: RFCOMM ch 4 opens
+normally, zero data, the phone closes it about 6 s later, and there is **no
+security traffic at all** (no link-key request, no authentication, no
+encryption change). So the phone fails its own security check locally,
+without ever asking the bridge to authenticate. Re-pairing did not change
+that.
+
+The same capture had the answer to whether the bridge can encrypt with this
+phone: the post-pairing bootstrap connection into the phone's DUN service got
+the 7610 to authenticate and encrypt (key size 16). The phone does run
+security as a *server*; it just does not start it as a BTCOMM *client*.
+
+With security on, the same test gives the gnubox tutorials' healthy result:
+
+```
+123456Error = 0
+78 Error = -3
+```
+
+and the bridge logs a link-key request, `Authentication complete
+status=0x00`, `Encryption change ... enabled=1`, key size 16, then
+`link security: level=3 ... key_size=16` at RFCOMM open, followed by the
+phone's bytes. The first real dial after that went straight to PPP (no
+`CLIENT` login script was sent) and reached `PPP up` 0.4 s after the channel
+opened.
+
+## Why it was missed for so long
+
+- The dial failure gave no useful error: the connection agent swallowed
+  -6005 and reported "network problem", or even `KErrNone`.
+- The bridge never saw a failed security procedure, because none was
+  attempted. A trace with *no* security events looks like "security is not
+  involved", which is the wrong reading.
+- `GW_REQUIRE_ENCRYPTION` was on the experiment branch in July and was
+  dropped as "low value" without being run.
+- The gnubox tutorials did say it, as a host-side setting ("Secure
+  Connections" on Widcomm, "Enable Data Encryption" on BlueSoleil).
+
+## S60 1st Edition needs it off
+
+With security on, an N-Gage QD cannot connect, so the switch defaults to off.
+Not traced yet; S60v1's gnubox writes `BTCOMM::0` and its security handling
+differs.
+
+## Also fixed in this session
+
+`bt_reopen_task` (`main/gateway.c`) called `gap_discoverable_control()` from
+its own FreeRTOS task. When that ran while the phone was reconnecting, it
+raced RFCOMM and lost a PN response, and the phone waited 63 s on a half-open
+channel. Now a BTstack run-loop timer (v1.5.1).
+
+Everything below is the history of the investigation, kept for the record.
+The theories it rules out (operator CSD, 2G registration, `BTCOMM::0` vs
+`::5`, DUN, server-first LCP, the telephony pre-call) stay ruled out.
+
+
 # Update 2026-10-31 — 7610 never reaches the bridge; cause still unknown
 
-**Status: unsolved, paused.** An earlier version of this section (shipped
+**Status: superseded by the update above.** An earlier version of this section (shipped
 with v1.5.0) named the cause as "PHONETSY places a real CSD call that the
 operator refuses". Later tests in the same session disproved that, see below.
 
