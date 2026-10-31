@@ -437,6 +437,67 @@ radio — fine for retro browsers); the phone's RFCOMM may negotiate small
 frames (harmless — PPPoS is a byte stream); a CCP ConfReq from the phone
 gets a spec-correct Protocol-Reject.
 
+### Open issue: controller reboot under sustained download
+
+Seen once (2026-08-05): a bridge up for 15 min rebooted while a phone was
+loading a page. Not the early `lc_lmppdu.c` crash fixed in 9612889 by the
+BR/EDR-only controller mode. The heartbeat just before showed
+`PPP:UP txdrop:11 | Heap:44KB min:32KB`, then:
+
+```
+ASSERT_WARN(94 9), in lc_task.c at line 1556        x7
+ASSERT_PARAM(-218959118 0), in arch_main.c at line 374
+Backtrace: r_assert ← r_assert_param ← r_platform_reset ← r_ke_malloc
+           ← r_ke_msg_alloc ← r_ke_msg_send_basic ← ld_acl_rx
+           ← ld_acl_frm_isr ← r_ld_fm_frame_isr ← r_rwbt_isr ← ...
+```
+
+A received ACL frame could not get a message from the controller's internal
+`ke` heap inside the BT ISR, so the controller reset. `-218959118` is
+`0xF2F2F2F2`, a poison word where a heap pointer belongs. All frames are ROM
+or controller library. (A `btdm_sleep_check_duration` name in the memory-dump
+line is a nearest-symbol artifact of `r_assert`; this dump says nothing about
+modem sleep.)
+
+**Ruled out (2026-10-31):** that controller-to-host flow control was never
+on. A boot trace shows `Host_Buffer_Size` (ACL 1024 × 20, SCO 60 × 10) and
+`Set_Controller_To_Host_Flow_Control` (flags 3) both completing with status
+`0x00`.
+
+**Leading hypothesis: the BTstack run loop is starved and leaks
+controller-to-host credits.**
+
+- The run loop *is* the IDF main task (`main.c` calls
+  `btstack_run_loop_execute()` from `app_main`; the port creates no task), so
+  it runs at priority 1 on core 0, below the BT controller and WiFi (23),
+  lwIP (18) and every application task. This is inferred from
+  `ESP_TASK_MAIN_PRIO`, not measured.
+- `txdrop:11` means the PPP TX stream, drained only from the run loop,
+  overflowed 11 times: the run loop falling behind, seen from the TX side.
+- When the VHCI receive ring is full, `hci_transport_esp32_vhci.c` drops the
+  packet without storing it. BTstack never acknowledges it, so one of the 20
+  ACL credits is lost for good. The ring holds exactly 20 full ACL packets
+  plus 4 events, and HCI events are not flow-controlled, so an event backlog
+  under heavy TX eats ACL space. Once the credits run out, received frames
+  pile up in the controller until `ld_acl_rx` can't allocate. A slow leak
+  fits the 15-minute survival.
+
+**Next test:** reproduce with a sustained download, capturing the serial log
+from reset, with *BTstack internal log* on and *HCI packet trace* off (the
+trace itself would starve the run loop). `transport_recv_pkt_cb ... ->
+dropping packet` appearing confirms the leak; its absence kills it. The
+message is a BTstack error-level log, which only prints with that switch on.
+Also log `uxTaskPriorityGet(NULL)` before `btstack_run_loop_execute()` to
+turn the priority figure into evidence.
+
+**Fix candidates, once confirmed:** run the BTstack loop at a higher
+priority (in `main.c`, safe); budget more events in the VHCI ring; or
+throttle RFCOMM with manual credits (`rfcomm_grant_credits`), which touches
+neither priorities nor the BTstack tree. `components/btstack` is a separate
+checkout, so any change inside it has to be carried as a patch. Held in
+reserve: the heartbeat's 30 s blocking console write (a priority-2 task),
+and modem sleep (`BTDM_CTRL_MODEM_SLEEP`, not implicated by this dump).
+
 ## Status
 
 Builds clean against ESP-IDF v5.4.4 + BTstack v1.8.2. Validated end-to-end
