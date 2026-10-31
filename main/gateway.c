@@ -39,9 +39,13 @@ static volatile int8_t bt_rssi = -100;
 static hci_con_handle_t bt_handle = HCI_CON_HANDLE_INVALID;
 static int64_t boot_us = 0;
 
-/* One-at-a-time guards (under state_mux) */
-static volatile bool bt_reopen_running  = false;
+/* One-at-a-time guard (under state_mux) */
 static volatile bool wifi_kick_running  = false;
+
+/* Re-shows the bridge after a session ends. A run-loop timer, not a task:
+ * gap_*_control() must run on the BTstack task, and calling it from a
+ * separate task raced RFCOMM and lost a PN response mid-setup. */
+static btstack_timer_source_t bt_reopen_timer;
 
 static btstack_packet_callback_registration_t hci_event_cb;
 
@@ -144,14 +148,9 @@ void bt_set_visible(bool v) {
     ESP_LOGI(TAG, "[BT] %s", v ? "visible" : "hidden");
 }
 
-static void bt_reopen_task(void *arg) {
-    (void)arg;
-    vTaskDelay(pdMS_TO_TICKS(BT_REOPEN_DELAY_MS));
+static void bt_reopen_timer_handler(btstack_timer_source_t *ts) {
+    (void)ts;
     if (!get_bt_connected()) bt_set_visible(true);
-    taskENTER_CRITICAL(&state_mux);
-    bt_reopen_running = false;
-    taskEXIT_CRITICAL(&state_mux);
-    vTaskDelete(NULL);
 }
 
 // ============================================================
@@ -172,16 +171,15 @@ void gw_on_rfcomm_closed(void) {
     bt_connected = false;
     bt_handle    = HCI_CON_HANDLE_INVALID;
     bt_rssi      = -100;
-    bool already = bt_reopen_running;
-    if (!already) bt_reopen_running = true;
     taskEXIT_CRITICAL(&state_mux);
 
     set_app_state(APP_WAIT_BT);
     update_nat();
 
-    if (!already) {
-        gw_safe_task_create(bt_reopen_task, "btr", 4096, NULL, 4, NULL);
-    }
+    btstack_run_loop_remove_timer(&bt_reopen_timer);
+    btstack_run_loop_set_timer_handler(&bt_reopen_timer, bt_reopen_timer_handler);
+    btstack_run_loop_set_timer(&bt_reopen_timer, BT_REOPEN_DELAY_MS);
+    btstack_run_loop_add_timer(&bt_reopen_timer);
 }
 
 /* Guarded delay task: wait for IPCP/coex to settle, then start WiFi. */

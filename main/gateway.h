@@ -73,7 +73,7 @@ void        gw_safe_task_create(TaskFunction_t fn, const char *name,
                                 uint32_t stack, void *arg,
                                 UBaseType_t prio, TaskHandle_t *handle);
 uint32_t    uptime_seconds(void);
-void        bt_set_visible(bool v);
+void        bt_set_visible(bool v);                    /* BTstack task */
 void        gw_wifi_kick_deferred(void);               /* any task */
 void        gw_on_rfcomm_opened(uint16_t con_handle);  /* BTstack task */
 void        gw_on_rfcomm_closed(void);                 /* BTstack task */
