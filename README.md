@@ -351,7 +351,7 @@ or "Enable Data Encryption" (BlueSoleil). The full investigation is in
    language sets (Symbian 7.0s builds):
    [Americas](https://ftp.opera.com/pub/opera/series60/2.x/865/americas/opera_s60_865_AMERICAS_70s_20.sis),
    [Europe](https://ftp.opera.com/pub/opera/series60/2.x/865/emea/opera_s60_865_EMEA_70s_20.sis),
-   [Asia-Pacific](https://ftp.opera.com/pub/opera/series60/2.x/865/apac/opera_s60_865_APAC_70s_20.sis).
+   [Asia-Pacific](https://ftp.opera.com/pub/opera/series60/2.x/865/apac/opera_s60_865_APAC_70s_20.sis). If Opera complains about trial ends, delete `C:\System\Data\ousr600.dat` (Opera 6.20) or `C:\System\Data\viger.dat` (Opera 8.65) to reset the trial date.
 
 Only the 7610 has been tested. The other FP1 phones gnubox v1.1 supports
 (3230, 6260, 6620, 6670) should behave the same with their own gnubox build.
