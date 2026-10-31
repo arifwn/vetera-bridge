@@ -26,6 +26,7 @@
 #include "netif/ppp/pppapi.h"
 
 #include "esp_log.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 
@@ -71,6 +72,39 @@ static uint8_t tx_chunk[PPP_TX_CHUNK_MAX];
  * first HDLC flag (0x7E). */
 static bool ppp_frame_seen = false;
 static const char *pre_ppp_reply = NULL;
+
+/* --- serial channel security (web UI /security), read once at boot --- */
+#define NVS_NAMESPACE   "gw"        /* same namespace wifi_multi.c uses */
+#define NVS_KEY_SECURE  "btsec"
+
+static bool link_secure = false;
+
+static bool nvs_secure_load(void) {
+    nvs_handle_t h;
+    uint8_t v = 0;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
+    nvs_get_u8(h, NVS_KEY_SECURE, &v);
+    nvs_close(h);
+    return v != 0;
+}
+
+bool ppp_link_secure_get(void) {
+    return link_secure;
+}
+
+void ppp_link_secure_save(bool on) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
+    if (on) {
+        nvs_set_u8(h, NVS_KEY_SECURE, 1);
+    } else {
+        nvs_erase_key(h, NVS_KEY_SECURE);   /* absent = off */
+    }
+    nvs_commit(h);
+    nvs_close(h);
+    ESP_LOGI(TAG, "serial channel security saved as %s, applies on reboot",
+             on ? "on" : "off");
+}
 
 // ============================================================
 // NAT
@@ -424,6 +458,20 @@ void ppp_link_init(void) {
     l2cap_init();
     rfcomm_init();
     sdp_init();
+
+    /* Optionally require an authenticated, encrypted link before RFCOMM
+     * accepts a phone. Symbian's BTCOMM client on S60v2 does not start
+     * security itself: with a security requirement set (gnubox always sets
+     * one), it expects the server to have authenticated and encrypted the
+     * link and otherwise fails every read and write with -6005. This is what
+     * "Secure Connections" / "Enable Data Encryption" did on Widcomm and
+     * BlueSoleil. Off by default, which is how S60v1 phones have always
+     * connected. BTstack takes the level when the first RFCOMM service
+     * registers, so a change needs a reboot. SDP stays open either way. */
+    link_secure = nvs_secure_load();
+    rfcomm_set_required_security_level(link_secure ? LEVEL_2 : LEVEL_0);
+    ESP_LOGI(TAG, "serial channel security: %s",
+             link_secure ? "authentication + encryption required" : "off");
 
     /* Automatic credit management: RX drains into a much faster WiFi
      * uplink, so no manual rfcomm_grant_credits throttling is needed. */

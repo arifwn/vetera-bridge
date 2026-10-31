@@ -275,6 +275,7 @@ static esp_err_t handler_root(httpd_req_t *req) {
         "<a href='/bm'>Bookmarks</a><br>"
         "<a href='/wifi'>WiFi networks</a><br>"
         "<a href='/name'>Device name</a><br>"
+        "<a href='/security'>Bluetooth security</a><br>"
         "<a href='/debug'>Debug logging</a><br>"
         "<a href='/reboot' style='color:#e74c3c;'>Reboot</a>"
         "<br>" PAGE_FOOTER
@@ -701,6 +702,72 @@ static esp_err_t handler_debug_post(httpd_req_t *req) {
     return redirect_to(req, "/debug");
 }
 
+// ============================================================
+// Bluetooth security page
+// ============================================================
+
+static esp_err_t handler_security_get(httpd_req_t *req) {
+    if (!captive_check(req)) return ESP_OK;
+    set_no_cache(req, "text/html");
+
+    bool on = ppp_link_secure_get();
+    char *page = malloc(2560);
+    if (!page) return ESP_ERR_NO_MEM;
+    snprintf(page, 2560,
+        "<html><head><title>Bluetooth Security</title>"
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='format-detection' content='telephone=no'>"
+        "</head>"
+        "<body style='font-family:sans-serif;padding:20px;text-align:center;'>"
+        "<h2>Bluetooth Security</h2><hr>"
+        "<div style='text-align:left;background:#ecf0f1;padding:15px;'>"
+        "<b>Now:</b> %s"
+        "</div>"
+        "<form action='/security' method='post' style='text-align:left;'>"
+        "<p><input type='checkbox' name='sec' value='1'%s> "
+        "<b>Require authentication and encryption</b><br>"
+        "<small>The bridge authenticates and encrypts the link before a "
+        "phone can open the serial channel. Turn this on for S60 2nd "
+        "Edition phones (e.g. Nokia 7610) with gnubox. Leave it off for "
+        "S60 1st Edition phones (N-Gage, 3650, ...).</small></p>"
+        "<p style='text-align:center;'><input type='submit' value='Save' "
+        "style='font-size:110%%;'></p>"
+        "</form>"
+        "<p style='text-align:left;'><small>Saving a change reboots the "
+        "bridge, which drops a connected phone. With this on, a phone that "
+        "has not paired with the bridge is asked for the PIN (0000) when "
+        "it connects.</small></p><hr>"
+        "<a href='/'>Status</a>"
+        "<br>" PAGE_FOOTER
+        "</body></html>",
+        on ? "required" : "off",
+        on ? " checked" : "");
+
+    esp_err_t r = httpd_resp_sendstr(req, page);
+    free(page);
+    return r;
+}
+
+static void reboot_task(void *arg);
+
+static esp_err_t handler_security_post(httpd_req_t *req) {
+    char buf[64] = {0};
+    if (recv_body(req, buf, sizeof(buf)) < 0) return ESP_FAIL;
+
+    /* An unticked checkbox is simply absent from the form body. */
+    char v[4];
+    bool on = httpd_query_key_value(buf, "sec", v, sizeof(v)) == ESP_OK;
+    if (on == ppp_link_secure_get()) return redirect_to(req, "/security");
+
+    /* BTstack only takes the level at boot, so apply by rebooting. */
+    ppp_link_secure_save(on);
+    httpd_resp_sendstr(req,
+        "<html><body><p>Saved. Rebooting...</p></body></html>");
+    gw_safe_task_create(reboot_task, "reboot", 2048, NULL, 3, NULL);
+    return ESP_OK;
+}
+
 static esp_err_t handler_reset(httpd_req_t *req) {
     wifi_list_clear();
     return redirect_to(req, "/wifi");
@@ -743,6 +810,8 @@ void web_ui_start(void) {
         { "/name",        HTTP_POST, handler_name_post, NULL },
         { "/debug",       HTTP_GET,  handler_debug_get, NULL },
         { "/debug",       HTTP_POST, handler_debug_post, NULL },
+        { "/security",    HTTP_GET,  handler_security_get, NULL },
+        { "/security",    HTTP_POST, handler_security_post, NULL },
         { "/reset",       HTTP_GET,  handler_reset,    NULL },
         { "/reboot",      HTTP_GET,  handler_reboot,   NULL },
         { "/favicon.ico", HTTP_GET,  handler_favicon,  NULL },

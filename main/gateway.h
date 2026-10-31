@@ -86,6 +86,8 @@ const char *bt_rssi_str(char *buf, int len);   /* "-42", or "n/a" if polling off
 /* ppp_link.c */
 void ppp_link_init(void);       /* BTstack task, before hci_power_on */
 bool ppp_link_up(void);
+bool ppp_link_secure_get(void);         /* in effect since boot */
+void ppp_link_secure_save(bool on);     /* any task; applies on reboot */
 uint32_t ppp_link_tx_dropped(void);
 void update_nat(void);          /* callable from any task */
 
