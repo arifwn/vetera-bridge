@@ -5,8 +5,8 @@
 A sibling of [Satura Bridge](https://github.com/sigildeveloper/satura-bridge),
 for the older generation it can't reach. Satura Bridge gives internet to retro
 phones over **Bluetooth PAN** — but the oldest smartphones (Symbian 6.1 /
-S60 1st Edition: Nokia N-Gage, 7650 and 3650) predate PAN entirely. Vetera
-Bridge covers them: the phone's own GSM-data dial-up stack is redirected to a
+S60 1st Edition: Nokia N-Gage, N-Gage QD, 7650 and 3650) predate PAN
+entirely. Vetera Bridge covers them: the phone's own GSM-data dial-up stack is redirected to a
 Bluetooth serial (RFCOMM) link with **gnubox**, and the ESP32 terminates the
 resulting raw PPP connection and NATs it out over WiFi.
 
@@ -136,10 +136,11 @@ mode before it will hand you anything. Note that builds are not bit-for-bit
 reproducible: `CONFIG_APP_COMPILE_TIME_DATE` is on, so rebuilding the same
 commit gives a different app-image hash.
 
-## Phone setup (S60 1st Edition. Tested on the N-Gage Classic, Nokia 3650 and Nokia 7650)
+## Phone setup (S60 1st Edition. Tested on the N-Gage Classic, N-Gage QD, Nokia 3650 and Nokia 7650)
 
 Leave the bridge's Bluetooth security switch (`/security`) **off**, which is
-the default. With it on, an N-Gage QD cannot connect.
+the default. With it on, the N-Gage QD cannot connect; with it off, the QD
+dials and browses like the other S60 1st Edition phones.
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
    device → select **Vetera Bridge &lt;number&gt;** → PIN `0000`.
