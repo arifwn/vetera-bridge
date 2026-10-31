@@ -37,6 +37,9 @@ apps on the phone — just gnubox's one-time CommDB edit.
   derived from its own Bluetooth address, so several units can run at once
   without being confused in the phone's device list; rename any unit on `/name`
 - Watchdogs: WiFi-stuck recovery, DNS-hang restart, low-heap reboot
+- **Debug logging switches** on `/debug`: HCI packet trace, BTstack's internal
+  log and verbose bridge events, to the USB serial console. Kept across
+  reboots, so a trace can cover pairing from power-on
 
 ## Hardware
 
@@ -371,6 +374,22 @@ got IP, connected to '<ssid>'
 
 Heartbeat lines (`[HB] State:... | BT:... | PPP:... | WiFi:...`) appear every
 30 s with RSSI, heap, and TX-drop counters.
+
+### Debug logging
+
+When the normal log is not enough, open `/debug` (from the phone at
+`http://192.168.7.1/debug`, or from a PC at the bridge's WiFi IP) and tick:
+
+- **HCI packet trace**: every HCI packet as hex. Shows SDP queries, RFCOMM
+  setup and pairing, the layer where a phone that "won't dial" usually fails.
+- **BTstack internal log**: BTstack's own `LOG --` lines (L2CAP/RFCOMM/SDP).
+- **Verbose bridge events**: unhandled HCI event codes, and the link security
+  level when a phone opens the serial channel.
+
+Changes apply at once and are stored in NVS, so they survive a reboot and the
+trace can start at power-on. Output goes to the USB serial console only. The
+packet trace prints from inside the Bluetooth run loop over a 115200-baud
+UART, so it slows the phone's connection a lot: turn it off for normal use.
 
 ## Design notes
 

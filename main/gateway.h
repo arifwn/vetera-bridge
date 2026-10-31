@@ -103,6 +103,19 @@ void bt_name_get_custom(char *out, int out_len);  /* override, "" if unset */
 void bt_name_get_derived(char *out, int out_len); /* "" until the BT stack is up */
 void bt_name_set(const char *name);     /* any task; "" clears the override */
 
+/* debug_log.c — optional extended logging to the serial console, switched
+ * from the web UI and kept in NVS. */
+#define DBG_HCI_PACKETS 0x01    /* hex dump of every HCI packet */
+#define DBG_BTSTACK_LOG 0x02    /* BTstack's internal log lines */
+#define DBG_VERBOSE     0x04    /* extra bridge-side detail */
+#define DBG_ALL         (DBG_HCI_PACKETS | DBG_BTSTACK_LOG | DBG_VERBOSE)
+
+void    debug_log_init(void);       /* NVS load, before bt_setup */
+void    debug_log_bt_setup(void);   /* BTstack task, before hci_power_on */
+uint8_t debug_log_get(void);
+bool    debug_log_on(uint8_t flag);
+void    debug_log_set(uint8_t flags);   /* any task; saved, applied at once */
+
 /* bt_bootstrap.c — one-shot mRouter-registration connect into the phone
  * after a fresh pairing (see PLANNED_UPDATE.md). BTstack task only. */
 void bt_bootstrap_on_pairing_complete(const uint8_t addr[6]);

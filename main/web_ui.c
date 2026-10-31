@@ -275,6 +275,7 @@ static esp_err_t handler_root(httpd_req_t *req) {
         "<a href='/bm'>Bookmarks</a><br>"
         "<a href='/wifi'>WiFi networks</a><br>"
         "<a href='/name'>Device name</a><br>"
+        "<a href='/debug'>Debug logging</a><br>"
         "<a href='/reboot' style='color:#e74c3c;'>Reboot</a>"
         "<br>" PAGE_FOOTER
         "</body></html>",
@@ -634,6 +635,72 @@ static esp_err_t handler_name_post(httpd_req_t *req) {
     return redirect_to(req, "/name");
 }
 
+// ============================================================
+// Debug logging page
+// ============================================================
+
+static esp_err_t handler_debug_get(httpd_req_t *req) {
+    if (!captive_check(req)) return ESP_OK;
+    set_no_cache(req, "text/html");
+
+    uint8_t f = debug_log_get();
+    char *page = malloc(2560);
+    if (!page) return ESP_ERR_NO_MEM;
+    snprintf(page, 2560,
+        "<html><head><title>Debug Logging</title>"
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='format-detection' content='telephone=no'>"
+        "</head>"
+        "<body style='font-family:sans-serif;padding:20px;text-align:center;'>"
+        "<h2>Debug Logging</h2><hr>"
+        "<form action='/debug' method='post' style='text-align:left;'>"
+        "<p><input type='checkbox' name='hci' value='1'%s> "
+        "<b>HCI packet trace</b><br>"
+        "<small>Every Bluetooth HCI packet as hex: SDP queries, RFCOMM "
+        "setup, pairing.</small></p>"
+        "<p><input type='checkbox' name='stk' value='1'%s> "
+        "<b>BTstack internal log</b><br>"
+        "<small>The Bluetooth stack's own L2CAP/RFCOMM/SDP state "
+        "messages.</small></p>"
+        "<p><input type='checkbox' name='vrb' value='1'%s> "
+        "<b>Verbose bridge events</b><br>"
+        "<small>Unhandled HCI event codes, link security when a phone "
+        "opens the serial channel.</small></p>"
+        "<p style='text-align:center;'><input type='submit' value='Save' "
+        "style='font-size:110%%;'></p>"
+        "</form>"
+        "<p style='text-align:left;'><small>Output goes to the USB serial "
+        "console (115200 baud) only. Changes apply at once and are kept "
+        "across reboots, so a trace can cover pairing from power-on. The "
+        "packet trace slows the phone's connection a lot: turn it off for "
+        "normal use.</small></p><hr>"
+        "<a href='/'>Status</a>"
+        "<br>" PAGE_FOOTER
+        "</body></html>",
+        (f & DBG_HCI_PACKETS) ? " checked" : "",
+        (f & DBG_BTSTACK_LOG) ? " checked" : "",
+        (f & DBG_VERBOSE)     ? " checked" : "");
+
+    esp_err_t r = httpd_resp_sendstr(req, page);
+    free(page);
+    return r;
+}
+
+static esp_err_t handler_debug_post(httpd_req_t *req) {
+    char buf[128] = {0};
+    if (recv_body(req, buf, sizeof(buf)) < 0) return ESP_FAIL;
+
+    /* Unticked checkboxes are simply absent from the form body. */
+    char v[4];
+    uint8_t f = 0;
+    if (httpd_query_key_value(buf, "hci", v, sizeof(v)) == ESP_OK) f |= DBG_HCI_PACKETS;
+    if (httpd_query_key_value(buf, "stk", v, sizeof(v)) == ESP_OK) f |= DBG_BTSTACK_LOG;
+    if (httpd_query_key_value(buf, "vrb", v, sizeof(v)) == ESP_OK) f |= DBG_VERBOSE;
+    debug_log_set(f);
+    return redirect_to(req, "/debug");
+}
+
 static esp_err_t handler_reset(httpd_req_t *req) {
     wifi_list_clear();
     return redirect_to(req, "/wifi");
@@ -674,6 +741,8 @@ void web_ui_start(void) {
         { "/bm/del",      HTTP_GET,  handler_bm_del,   NULL },
         { "/name",        HTTP_GET,  handler_name_get, NULL },
         { "/name",        HTTP_POST, handler_name_post, NULL },
+        { "/debug",       HTTP_GET,  handler_debug_get, NULL },
+        { "/debug",       HTTP_POST, handler_debug_post, NULL },
         { "/reset",       HTTP_GET,  handler_reset,    NULL },
         { "/reboot",      HTTP_GET,  handler_reboot,   NULL },
         { "/favicon.ico", HTTP_GET,  handler_favicon,  NULL },

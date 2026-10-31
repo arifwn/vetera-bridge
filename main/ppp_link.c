@@ -323,6 +323,15 @@ static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel,
             uint16_t con_handle = rfcomm_event_channel_opened_get_con_handle(packet);
             ESP_LOGI(TAG, "RFCOMM channel opened, cid 0x%04x, max frame %u",
                      cid, mfs);
+            if (debug_log_on(DBG_VERBOSE)) {
+                /* For legacy PIN-paired phones gap_authenticated() reads 0
+                 * even on an authenticated link: trust level and key_size. */
+                ESP_LOGI(TAG, "link security: level=%d authenticated=%d "
+                         "key_size=%u",
+                         (int)gap_security_level(con_handle),
+                         (int)gap_authenticated(con_handle),
+                         (unsigned)gap_encryption_key_size(con_handle));
+            }
 
             xStreamBufferReset(ppp_tx_stream);
             taskENTER_CRITICAL(&state_mux);

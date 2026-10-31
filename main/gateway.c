@@ -333,7 +333,11 @@ static void hci_packet_handler(uint8_t type, uint16_t ch,
              * BTstack define rather than a spec event code. */
             break;
         default:
-            ESP_LOGI(TAG, "[HCI] event 0x%02x", hci_event_packet_get_type(pkt));
+            /* Mostly routine (0x61 connections changed, 0x1b max slots...),
+             * so only shown with verbose logging on. */
+            if (debug_log_on(DBG_VERBOSE)) {
+                ESP_LOGI(TAG, "[HCI] event 0x%02x", hci_event_packet_get_type(pkt));
+            }
             break;
     }
 }
@@ -407,6 +411,7 @@ static void watchdog_task(void *arg) {
 // ============================================================
 
 static void bt_setup(void) {
+    debug_log_bt_setup();
     /* Placeholder until BTSTACK_EVENT_STATE composes the real name — BTstack
      * keeps this pointer and re-reads it on every name write. */
     gap_set_local_name(bt_name_active_ptr());
@@ -438,6 +443,7 @@ int btstack_main(int argc, const char *argv[]) {
         nvs_flash_init();
     }
 
+    debug_log_init();       /* before bt_setup: it applies the saved flags */
     bt_name_init();
     bookmarks_init();       /* before web_ui_start: the handlers read the count */
     wifi_multi_init();

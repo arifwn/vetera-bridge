@@ -10,6 +10,7 @@ idf_component_register(
         "web_ui.c"
         "bookmarks.c"
         "dns_fwd.c"
+        "debug_log.c"
 
     INCLUDE_DIRS "."
 
