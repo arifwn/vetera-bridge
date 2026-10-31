@@ -102,6 +102,11 @@ HOST_GID='"$(id -g)"'
 
 rm -rf /project/build /project/sdkconfig /project/sdkconfig.old
 
+# The checkout belongs to the host user, not root, so git refuses to read it
+# ("dubious ownership") and ESP-IDF falls back to stamping the app version
+# as "1". Every release up to v1.5.1 shipped like that.
+git config --global --add safe.directory /project
+
 idf.py set-target esp32
 idf.py build
 
@@ -145,6 +150,24 @@ done
 # sdkconfig, and the one whose absence cost four releases of stability.
 grep -q '^CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY=y$' "$ROOT/sdkconfig" || \
     die "generated sdkconfig is not in BR/EDR-only mode — refusing to release"
+
+# The version the firmware reports at boot comes from `git describe`, read
+# from esp_app_desc_t (magic 0xABCD5432 right after the first segment
+# header, version string 16 bytes in). It only equals the tag when the tag
+# is on HEAD and no tracked file is modified.
+APP_VER="$(python3 - "$OUT/vetera-bridge-$VERSION-app.bin" <<'PY'
+import struct, sys
+d = open(sys.argv[1], "rb").read()
+if struct.unpack_from("<I", d, 0x20)[0] != 0xABCD5432:
+    sys.exit("app descriptor not found")
+print(d[0x30:0x50].split(b"\0")[0].decode())
+PY
+)" || die "could not read the app version from the built image"
+if [ "$APP_VER" != "$VERSION" ]; then
+    [ "$PUBLISH" -eq 1 ] && \
+        die "image reports version '$APP_VER', not '$VERSION' — refusing to release"
+    say "warning: image reports version '$APP_VER', not '$VERSION'"
+fi
 
 say "assets in build/release:"
 ( cd "$OUT" && ls -1sh vetera-bridge-"$VERSION"-*.bin SHA256SUMS.txt )
