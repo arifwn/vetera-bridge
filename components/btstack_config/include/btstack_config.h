@@ -46,7 +46,9 @@
 #define ENABLE_CLASSIC_LEGACY_CONNECTIONS_FOR_SCO_DEMOS
 
 // Link keys
-#define NVM_NUM_LINK_KEYS 4
+// 16 phones remembered; ~3 NVS entries each. Past that, the key stored
+// longest ago is evicted (BTstack: least recently stored, not used).
+#define NVM_NUM_LINK_KEYS 16
 
 #endif
 

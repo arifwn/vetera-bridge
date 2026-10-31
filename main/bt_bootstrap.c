@@ -38,7 +38,7 @@ static const char *TAG = "bt_boot";
 
 #define BOOTSTRAP_START_DELAY_MS  1500  /* let post-pairing traffic settle */
 #define BOOTSTRAP_HOLD_MS         3000  /* how long to hold the link open  */
-#define BOOTSTRAP_MAX_DONE        4     /* matches NVM_NUM_LINK_KEYS       */
+#define BOOTSTRAP_MAX_DONE        NVM_NUM_LINK_KEYS
 
 typedef enum {
     BOOT_IDLE = 0,
