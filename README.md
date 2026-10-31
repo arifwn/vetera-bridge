@@ -297,23 +297,20 @@ newly-paired address per boot, so to re-trigger it, remove and re-add the
 pairing on the phone (or just reboot the ESP32 and pair again). After the
 `bootstrap link closed — done` log line, retry the gnubox dial.
 
-## S60 2nd Edition (7610): blocked by the phone's telephony layer
+## S60 2nd Edition (7610): not working, cause unknown
 
-Not supported, and not fixable from the bridge. On a **Nokia 7610** (S60 2nd
-Edition FP1) with the matching gnubox (-xan-'s v1.1 beta, `gnubox_7610.sis`),
-every gnubox mode writes `TSYName = PHONETSY` into the modem record, including
-"Direct over BT/Dialup", which only changes the SDP UUID it looks up. On FP1
-that makes the dial agent ask the phone's own GSM stack to place a real
-**CSD data call** before it touches Bluetooth. With a SIM whose operator has
-dropped CSD (most, by now), the call is refused within 2-3 s and the phone
-shows "network problem". A full HCI trace on the bridge shows **zero packets**
-from the phone during the dial. S60 1st Edition phones skip that call when the
-dial-up number is blank, which is why they work.
+Not supported yet. On a **Nokia 7610** (S60 2nd Edition FP1) with the matching
+gnubox (-xan-'s v1.1 beta, `gnubox_7610.sis`), every dial fails with
+"network problem" within 2-3 s, and a full HCI trace on the bridge shows
+**zero packets** from the phone: the failure is inside the phone, before it
+ever pages the bridge. Earlier attempts did reach the bridge (and in July got
+as far as an open RFCOMM channel that never carried data), so this is not a
+hard limit of the phone.
 
-The 7610 ships no other TSY (only `phonetsy.tsy` on Z:), so there is nothing
-to point the modem record at instead. Ways it could still work: a SIM on an
-operator that still accepts CSD calls, a custom "null" TSY for the phone, or
-a private GSM cell with CSD. The full investigation is in
+It is **not** the operator lacking CSD, which an earlier version of this
+README claimed: an N-Gage QD dials fine on the same no-CSD SIM with the same
+`PHONETSY` modem setting, and the 7610 fails identically with an inactive SIM.
+The investigation, with what has been ruled out and where to resume, is in
 [S60V2-FINDINGS.md](S60V2-FINDINGS.md).
 
 The bridge does advertise a Dial-Up Networking (0x1103) record next to LAP and

@@ -1,36 +1,57 @@
-# Update 2026-10-31 — root cause: PHONETSY places a real CSD call
+# Update 2026-10-31 — 7610 never reaches the bridge; cause still unknown
 
-**Conclusion: the 7610 cannot use the bridge with gnubox v1.1 on a SIM whose
-operator has no CSD, and no bridge change can fix it.** This settles the
-"telephony pre-call" hypothesis below.
+**Status: unsolved, paused.** An earlier version of this section (shipped
+with v1.5.0) named the cause as "PHONETSY places a real CSD call that the
+operator refuses". Later tests in the same session disproved that, see below.
 
-Session facts (7610 BT address `00:1B:EE:E1:3D:06`, SIM registered on 2G,
-operator does not support CSD, master firmware with full HCI trace):
+Session facts (7610 BT address `00:1B:EE:E1:3D:06`, master firmware with the
+full HCI trace from `/debug`):
 
-- After a fresh pairing, every dial fails with "network problem" in **2-3 s**
-  and the bridge receives **zero HCI packets** from the phone. Re-running
-  gnubox and power-cycling the phone change nothing. (Before re-pairing, some
-  dials did reach the bridge: an ACL plus a fresh PIN pairing, then a hang-up
-  about 4 s later with no SDP or RFCOMM. Same dead end.)
-- gnubox log: `BTCOMM CSY Configured.` with `3076f5e4aa06`, no errors. The
-  BT registry write is fine.
+- Every dial, from Opera or from gnubox `Options → Debug → bring IF up`,
+  fails in **2-3 s** ("network problem", or the access-point picker
+  reappearing in a loop). The bridge receives **zero HCI packets** from the
+  phone: no paging, no SDP, no RFCOMM. Re-running gnubox (BT/Serial and
+  BT/Dialup) and power-cycling the phone change nothing.
+- **This started with a re-pair.** Earlier in the session, before the bridge
+  was deleted from the phone's paired devices and paired again, dials did
+  reach the bridge: an ACL, a fresh PIN pairing on every dial (even though
+  the phone was already paired), then a hang-up about 4 s later with no SDP
+  or RFCOMM. Since the re-pair, no dial has reached the bridge.
+- gnubox `bring IF up` log: `iap ID = 4`, then `RGenericAgent::StartOutgoing`
+  returns **KErrNone** ("Connection open") after 2 s, still with nothing on
+  the bridge, and then the picker loop starts. So the phone's connection agent
+  reports success without any Bluetooth activity.
+- gnubox log: `BTCOMM CSY Configured.` with `3076f5e4aa06`, no errors.
 - CommDB (`Cdbv3.dat`), record `GnuBoxModem`: `csd.agt`, `PPP`,
-  `BTCOMM::5`, **`PHONETSY`**, `BTCOMM`; ISP description `Direct 2box`.
+  `BTCOMM::5`, `PHONETSY`, `BTCOMM`; ISP description `Direct 2box`. There is
+  also a `Default Modem` record (`CSD.agt` / `COMM::0` / TSY `MM` / `ECUART`),
+  probably just the database template: no `mm.tsy` exists on the phone.
 - gnubox v1.1 beta2 source, `src/gnuboxPhone.cpp` `PHONE_SETTINGS[]`: every
   mode (Direct over BT/Serial, BT/LANAcc, BT/Dialup, BT/Auto, IR, Cable)
   writes `TSYName = PHONETSY`. "BT/Dialup" is a Direct mode that only looks
-  up the DUN UUID instead of SPP. The older (S60v1-era) gnubox source did
-  blank the TSY in its Dialup mode ("It seems that doing this does the
-  trick"), so the phone would drive the far end as an AT modem. v1.1 dropped
-  that mode.
-- The 7610 has only `phonetsy.tsy` on Z:. No Hayes/MM TSY to swap in. It has
-  no Offline profile and will not boot without a SIM.
+  up the DUN UUID instead of SPP. The older (S60v1-era) gnubox source blanked
+  the TSY in its Dialup mode; v1.1 dropped that mode.
+- The 7610 has only `phonetsy.tsy` (Z:), nothing under `C:\System`. It has no
+  Offline profile and will not boot without a SIM.
 
-So on FP1, `csd.agt` asks PHONETSY to set up a GSM data call before it opens
-the Bluetooth port, the network refuses it, and the dial ends before
-Bluetooth. S60v1 skips that step when the number is blank. The July runs (SIM
-with no registration) reached RFCOMM and then stalled for 6 s, the same
-pre-call failing more slowly.
+**Disproven: "the operator has no CSD, so PHONETSY's data call is
+refused".** Two tests:
+
+1. The N-Gage QD's modem record also uses `PHONETSY` (with `BTCOMM::0` and a
+   blank number), and it dials the bridge fine on the 7610's SIM, whose
+   operator has no CSD.
+2. The 7610 fails exactly the same way, 2-3 s and no packets, with an
+   inactive SIM in it.
+
+So the TSY name is not the difference by itself, and the network does not
+appear to be involved. The July observation that an unregistered 7610 reached
+RFCOMM predates the re-pair, so it does not separate the two either.
+
+**Where to resume:** reset the phone's Bluetooth side completely, with the
+HCI trace on: delete the pairing, Bluetooth off, power-cycle; pair again
+(PIN `0000`); gnubox `2box → Direct over BT/Serial` → the bridge → **left**
+soft key at the encryption prompt; power-cycle again; `bring IF up` once.
+Watch for whether the phone pages the bridge at any step.
 
 Bridge side, kept on master: a DUN (0x1103) SDP record on the SPP channel (no
 third RFCOMM service), and runtime debug switches on `/debug` (HCI packet
@@ -50,10 +71,10 @@ are retired and deleted. What they held, and where it went:
 | `GW_REQUIRE_ENCRYPTION` | Dropped: never run, low value |
 | 3230 run plan | Now `S60V2-3230-PLAN.md` on master, not run yet |
 
-Remaining routes, none of them bridge work: a SIM on an operator that still
-accepts CSD calls, a custom "null" TSY DLL for the 7610 (pre-platform-security,
-so installable to `C:\system\libs\` and named only in `GnuBoxModem`), or a
-private GSM cell with CSD (osmo-bts).
+Ideas considered but parked until the cause is known: a desktop tool that
+edits a copy of `Cdbv3.dat` (feasible: text fields are length-prefixed and
+same-length patches are trivial, but only useful if the phone has another
+agent or TSY to point at), and a custom "null" TSY for the 7610.
 
 
 # Update 2026-07-29 — BTCOMM::5 tested and eliminated
