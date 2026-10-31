@@ -60,8 +60,10 @@ opened.
 
 ## S60 1st Edition needs it off
 
-With security on, an N-Gage QD cannot connect, so the switch defaults to off.
-With it off, the same QD connects straight away and browses normally.
+With security on, an N-Gage QD cannot connect. With it off, the same QD
+connects straight away and browses normally. That is why the switch defaults
+to auto, which leaves security off for phones whose Bluetooth name is an S60
+1st Edition model (see the README's Bluetooth security section).
 
 A partial log of one attempt with security on (QD `00:0E:6D:D4:B7:25`,
 2026-10-31). Debug logging had been switched off shortly before, so there is

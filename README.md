@@ -39,9 +39,10 @@ apps on the phone — just gnubox's one-time CommDB edit.
 - Watchdogs: WiFi-stuck recovery, DNS-hang restart, low-heap reboot
 - **Bluetooth security switch** on `/security`: makes the bridge authenticate
   and encrypt the link before a phone opens the serial channel. S60 2nd
-  Edition phones with gnubox need it on; S60 1st Edition phones need it off
-  (the default). Also switchable from the board's BOOT button, see
-  [Phone setup](#phone-setup-s60-2nd-edition-fp1-tested-on-the-nokia-7610)
+  Edition phones with gnubox need it on; S60 1st Edition phones need it off.
+  The default, **auto**, decides per phone from its Bluetooth name, so both
+  kinds work on one bridge with no setup. Also switchable from the board's
+  BOOT button, see [Bluetooth security](#bluetooth-security)
 - **Debug logging switches** on `/debug`: HCI packet trace, BTstack's internal
   log and verbose bridge events, to the USB serial console. Kept across
   reboots, so a trace can cover pairing from power-on
@@ -139,9 +140,13 @@ commit gives a different app-image hash.
 
 ## Phone setup (S60 1st Edition. Tested on the N-Gage Classic, N-Gage QD, Nokia 3650 and Nokia 7650)
 
-Leave the bridge's Bluetooth security switch (`/security`) **off**, which is
-the default. With it on, the N-Gage QD cannot connect; with it off, the QD
-dials and browses like the other S60 1st Edition phones.
+Leave the bridge's Bluetooth security switch (`/security`) on **auto**, the
+default, or set it **off**. Auto recognises these phones by their Bluetooth
+name and connects them without security. With security on, the N-Gage QD
+cannot connect. If you renamed the phone so its name no longer contains the
+model (`N-Gage`, `3650`, `7650`, ...), auto takes it for a newer phone: set
+the switch to off, or rename the phone back. See
+[Bluetooth security](#bluetooth-security).
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
    device → select **Vetera Bridge &lt;number&gt;** → PIN `0000`.
@@ -321,26 +326,10 @@ what the old Windows tutorials meant by ticking "Secure Connections" (Widcomm)
 or "Enable Data Encryption" (BlueSoleil). The full investigation is in
 [S60V2-FINDINGS.md](S60V2-FINDINGS.md).
 
-1. **Turn on security**, either way:
-   - **BOOT button** (works on a brand-new bridge): ESP32 dev boards have
-     two buttons, one on each side of the USB port. Use the one labelled
-     **BOOT** (or **IO0**), not **EN** (or **RST**), which resets the board.
-     Which side each is on varies by board, so go by the printed label. If
-     it's unreadable, press each once: EN restarts the bridge, BOOT blinks
-     the LED.
-     - Once the bridge is up, hold BOOT for 3 s. The LED blinks 3 times
-       (security on) or once (off), and the bridge reboots to apply it after
-       you let go. Hold again to switch it back.
-     - A short press just blinks the current setting.
-     - The LED is the one on GPIO2, found on most ESP32 DevKit V1 boards. A
-       board without it still switches, just with no blink.
-   - **Web UI**: open `/security`, tick *Require authentication and
-     encryption* and save. The bridge reboots to apply it. Do this from a PC
-     on the same WiFi (at the bridge's WiFi IP) or from a phone dialled in.
-
-   Don't hold BOOT while plugging in or pressing EN/RESET: that starts the
-   ESP32's flashing mode instead. Once the 7610 is dialled in, set up WiFi
-   from `http://192.168.7.1` as usual.
+1. **Security**: nothing to do with the default, **auto**, as long as the
+   phone keeps its factory Bluetooth name. Any name that isn't an S60 1st
+   Edition model gets security. A bridge set to off needs switching to auto or
+   on first, see [Bluetooth security](#bluetooth-security).
 2. **Pair**: phone → Connectivity → Bluetooth → pair with **Vetera Bridge
    &lt;number&gt;** → PIN `0000`.
 3. **Access point** named exactly `Bt`, bearer **Data call** (not GPRS),
@@ -359,8 +348,9 @@ or "Enable Data Encryption" (BlueSoleil). The full investigation is in
    to require encryption?" press the **left** soft key.
 6. **Check the link**: gnubox → `Options → Debug → Test comm channel`, then
    open `c:\nokia\ctest.txt`. Healthy is `123456Error = 0` and
-   `78 Error = -3`. `Error = -6005` means the bridge's security switch is
-   off (or not applied yet).
+   `78 Error = -3`. `Error = -6005` means the bridge didn't secure the link:
+   its switch is off (or not applied yet), or it is on auto and the phone's
+   name contains an S60 1st Edition model number.
 7. Open Opera with access point `Bt` and load `http://192.168.7.1`.
    Opera 8.65 for S60 2nd Edition is still on Opera's FTP archive, in three
    language sets (Symbian 7.0s builds):
@@ -374,6 +364,39 @@ Only the 7610 has been tested. The other FP1 phones gnubox v1.1 supports
 The bridge also advertises a Dial-Up Networking (0x1103) record next to LAP
 and Serial Port, on the Serial Port channel, and answers `AT`/`ATD` like a
 modem, for any phone setup that dials over DUN.
+
+## Bluetooth security
+
+The `/security` page has three settings:
+
+- **Auto** (default): when a phone opens the serial channel, the bridge asks
+  for its Bluetooth name. A name containing `N-Gage`, `NGage`, `3650`,
+  `3600`, `3660`, `3620` or `7650` (any case) connects without security, like
+  S60 1st Edition always has. Any other name gets authentication and
+  encryption first, which S60 2nd Edition needs. The page shows the last
+  phone's name and what the bridge decided, and the serial log has an
+  `auto security: phone '...'` line per connection.
+- **On**: every phone gets authentication and encryption.
+- **Off**: no phone does.
+
+Saving a change reboots the bridge. A bridge that has never had security set,
+or was set to off before auto existed, starts in auto.
+
+**BOOT button** (works without WiFi): ESP32 dev boards have two buttons, one
+on each side of the USB port. Use the one labelled **BOOT** (or **IO0**), not
+**EN** (or **RST**), which resets the board. Which side each is on varies by
+board, so go by the printed label. If it's unreadable, press each once: EN
+restarts the bridge, BOOT blinks the LED.
+
+- Once the bridge is up, hold BOOT for 3 s to step to the next setting:
+  off → on → auto → off. The LED blinks once for off, 3 times for on or twice
+  for auto, and the bridge reboots to apply it after you let go.
+- A short press just blinks the current setting.
+- The LED is the one on GPIO2, found on most ESP32 DevKit V1 boards. A board
+  without it still switches, just with no blink.
+
+Don't hold BOOT while plugging in or pressing EN/RESET: that starts the
+ESP32's flashing mode instead.
 
 ## Monitor log walkthrough
 
@@ -518,7 +541,8 @@ and modem sleep (`BTDM_CTRL_MODEM_SLEEP`, not implicated by this dump).
 Builds clean against ESP-IDF v5.4.4 + BTstack v1.8.2. Validated end-to-end
 against real S60v1 hardware (pairing → mRouter bootstrap → gnubox dial →
 PPP → web UI → WiFi NAT), and on the S60 2nd Edition FP1 Nokia 7610 with
-the `/security` switch on. Bring-up reports for other phones welcome.
+the `/security` switch on. Auto mode tested with an N-Gage QD and a 7610
+taking turns on the same bridge. Bring-up reports for other phones welcome.
 
 ## Credits & license
 
