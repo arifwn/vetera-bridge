@@ -663,6 +663,23 @@ static esp_err_t handler_404(httpd_req_t *req, httpd_err_code_t err) {
 }
 
 void web_ui_start(void) {
+    static const httpd_uri_t uris[] = {
+        { "/",            HTTP_GET,  handler_root,     NULL },
+        { "/wifi",        HTTP_GET,  handler_wifi_get, NULL },
+        { "/wifi/add",    HTTP_POST, handler_wifi_add, NULL },
+        { "/wifi/del",    HTTP_GET,  handler_wifi_del, NULL },
+        { "/bm",          HTTP_GET,  handler_bm_get,   NULL },
+        { "/bm/edit",     HTTP_GET,  handler_bm_edit,  NULL },
+        { "/bm/save",     HTTP_POST, handler_bm_save,  NULL },
+        { "/bm/del",      HTTP_GET,  handler_bm_del,   NULL },
+        { "/name",        HTTP_GET,  handler_name_get, NULL },
+        { "/name",        HTTP_POST, handler_name_post, NULL },
+        { "/reset",       HTTP_GET,  handler_reset,    NULL },
+        { "/reboot",      HTTP_GET,  handler_reboot,   NULL },
+        { "/favicon.ico", HTTP_GET,  handler_favicon,  NULL },
+    };
+    const size_t n_uris = sizeof(uris) / sizeof(uris[0]);
+
     httpd_config_t cfg   = HTTPD_DEFAULT_CONFIG();
     /* 10 KB, not the old 8: rendering a full bookmark list nests
      * handler_root -> bm_render_links (url_esc[960] + title_esc[192])
@@ -670,23 +687,12 @@ void web_ui_start(void) {
      * show up the moment someone opens a page full of bookmarks. */
     cfg.stack_size       = 10240;
     cfg.max_open_sockets = 2;
+    /* The default is 8 slots. Registering past that fails with only a
+     * warning, and the missing pages then fall through to the 404 redirect
+     * to "/", which is how /name, /reset and /reboot quietly vanished. */
+    cfg.max_uri_handlers = n_uris;
     if (httpd_start(&http_server, &cfg) == ESP_OK) {
-        static const httpd_uri_t uris[] = {
-            { "/",            HTTP_GET,  handler_root,     NULL },
-            { "/wifi",        HTTP_GET,  handler_wifi_get, NULL },
-            { "/wifi/add",    HTTP_POST, handler_wifi_add, NULL },
-            { "/wifi/del",    HTTP_GET,  handler_wifi_del, NULL },
-            { "/bm",          HTTP_GET,  handler_bm_get,   NULL },
-            { "/bm/edit",     HTTP_GET,  handler_bm_edit,  NULL },
-            { "/bm/save",     HTTP_POST, handler_bm_save,  NULL },
-            { "/bm/del",      HTTP_GET,  handler_bm_del,   NULL },
-            { "/name",        HTTP_GET,  handler_name_get, NULL },
-            { "/name",        HTTP_POST, handler_name_post, NULL },
-            { "/reset",       HTTP_GET,  handler_reset,    NULL },
-            { "/reboot",      HTTP_GET,  handler_reboot,   NULL },
-            { "/favicon.ico", HTTP_GET,  handler_favicon,  NULL },
-        };
-        for (size_t i = 0; i < sizeof(uris)/sizeof(uris[0]); i++)
+        for (size_t i = 0; i < n_uris; i++)
             httpd_register_uri_handler(http_server, &uris[i]);
         httpd_register_err_handler(http_server,
                                    HTTPD_404_NOT_FOUND, handler_404);
