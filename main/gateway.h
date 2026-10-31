@@ -86,9 +86,17 @@ const char *bt_rssi_str(char *buf, int len);   /* "-42", or "n/a" if polling off
 /* ppp_link.c */
 void ppp_link_init(void);       /* BTstack task, before hci_power_on */
 bool ppp_link_up(void);
-bool ppp_link_secure_get(void);         /* in effect since boot */
-bool ppp_link_secure_saved(void);       /* saved, applies on next boot */
-void ppp_link_secure_save(bool on);     /* any task; applies on reboot */
+typedef enum {                          /* Bluetooth security on RFCOMM */
+    BTSEC_OFF  = 0,
+    BTSEC_ON   = 1,                     /* authentication + encryption */
+    BTSEC_AUTO = 2,                     /* by phone name: off for S60v1 */
+} btsec_mode_t;
+btsec_mode_t ppp_link_secure_get(void);     /* in effect since boot */
+btsec_mode_t ppp_link_secure_saved(void);   /* saved, applies on next boot */
+void ppp_link_secure_save(btsec_mode_t mode);   /* any task; applies on reboot */
+const char *btsec_mode_str(btsec_mode_t mode);  /* "off", "on", "auto" */
+bool ppp_link_last_phone(char *name, int name_len, bool *secured);
+                                /* last auto decision; false if none yet */
 uint32_t ppp_link_tx_dropped(void);
 void update_nat(void);          /* callable from any task */
 

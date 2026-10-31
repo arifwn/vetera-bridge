@@ -14,6 +14,7 @@
  */
 
 #include <string.h>
+#include <strings.h>
 
 #include "btstack_config.h"
 #include "btstack.h"
@@ -73,41 +74,204 @@ static uint8_t tx_chunk[PPP_TX_CHUNK_MAX];
 static bool ppp_frame_seen = false;
 static const char *pre_ppp_reply = NULL;
 
-/* --- serial channel security (web UI /security), read once at boot --- */
+/* --- serial channel security (web UI /security), read once at boot ---
+ * NVS: absent = auto, 0 = off, 1 = on. Units from before auto existed stored
+ * off as an absent key, so they come up in auto. */
 #define NVS_NAMESPACE   "gw"        /* same namespace wifi_multi.c uses */
 #define NVS_KEY_SECURE  "btsec"
 
-static bool link_secure = false;
+static btsec_mode_t link_mode = BTSEC_AUTO;
 
-static bool nvs_secure_load(void) {
+static btsec_mode_t nvs_secure_load(void) {
     nvs_handle_t h;
-    uint8_t v = 0;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
+    uint8_t v = BTSEC_AUTO;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return BTSEC_AUTO;
     nvs_get_u8(h, NVS_KEY_SECURE, &v);
     nvs_close(h);
-    return v != 0;
+    if (v == BTSEC_OFF) return BTSEC_OFF;
+    if (v == BTSEC_ON) return BTSEC_ON;
+    return BTSEC_AUTO;
 }
 
-bool ppp_link_secure_get(void) {
-    return link_secure;
+btsec_mode_t ppp_link_secure_get(void) {
+    return link_mode;
 }
 
-bool ppp_link_secure_saved(void) {
+btsec_mode_t ppp_link_secure_saved(void) {
     return nvs_secure_load();
 }
 
-void ppp_link_secure_save(bool on) {
+void ppp_link_secure_save(btsec_mode_t mode) {
     nvs_handle_t h;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
-    if (on) {
-        nvs_set_u8(h, NVS_KEY_SECURE, 1);
+    if (mode == BTSEC_AUTO) {
+        nvs_erase_key(h, NVS_KEY_SECURE);   /* absent = auto */
     } else {
-        nvs_erase_key(h, NVS_KEY_SECURE);   /* absent = off */
+        nvs_set_u8(h, NVS_KEY_SECURE, (uint8_t)mode);
     }
     nvs_commit(h);
     nvs_close(h);
     ESP_LOGI(TAG, "serial channel security saved as %s, applies on reboot",
-             on ? "on" : "off");
+             btsec_mode_str(mode));
+}
+
+const char *btsec_mode_str(btsec_mode_t mode) {
+    switch (mode) {
+        case BTSEC_OFF: return "off";
+        case BTSEC_ON:  return "on";
+        default:        return "auto";
+    }
+}
+
+/* --- auto mode (BTstack task only) ---
+ * S60 1st Edition phones connect without security and the N-Gage QD fails
+ * with it; S60 2nd Edition phones fail without it (see ppp_link_init). In auto
+ * the L2CAP level stays at 0 and the RFCOMM accept is held while the bridge
+ * asks the phone for its name: a factory S60v1 name is accepted as is, any
+ * other name (or none) gets authentication + encryption first. A phone renamed
+ * away from its model number therefore counts as S60v2. */
+static const char *const s60v1_names[] = {
+    "N-Gage", "NGage",                  /* classic and QD */
+    "3650", "3600",                     /* 3600: the 3650's Americas model */
+    "3660", "3620",                     /* 3620: the 3660's Americas model */
+    "7650",
+};
+
+static uint16_t auto_cid = 0;           /* RFCOMM channel held, 0 = none */
+static hci_con_handle_t auto_handle;
+static bd_addr_t auto_addr;
+static bool auto_sec_pending = false;   /* waiting for GAP_EVENT_SECURITY_LEVEL */
+static btstack_packet_callback_registration_t auto_hci_cb;
+
+/* Last auto decision, for the /security page. Under state_mux. */
+static char last_phone_name[BT_NAME_MAX];
+static bool last_phone_secured = false;
+static bool last_phone_valid = false;
+
+bool ppp_link_last_phone(char *name, int name_len, bool *secured) {
+    bool valid;
+    taskENTER_CRITICAL(&state_mux);
+    valid = last_phone_valid;
+    if (valid) {
+        strlcpy(name, last_phone_name, name_len);
+        *secured = last_phone_secured;
+    }
+    taskEXIT_CRITICAL(&state_mux);
+    return valid;
+}
+
+static bool contains_nocase(const char *hay, const char *needle) {
+    size_t n = strlen(needle);
+    for (; *hay; hay++) {
+        if (strncasecmp(hay, needle, n) == 0) return true;
+    }
+    return false;
+}
+
+static bool is_s60v1_name(const char *name) {
+    for (size_t i = 0; i < sizeof(s60v1_names) / sizeof(s60v1_names[0]); i++) {
+        if (contains_nocase(name, s60v1_names[i])) return true;
+    }
+    return false;
+}
+
+static void auto_release(void) {
+    auto_cid = 0;
+    auto_sec_pending = false;
+}
+
+static void auto_fail(const char *why) {
+    ESP_LOGW(TAG, "auto security: %s, declining the phone", why);
+    uint16_t cid = auto_cid;
+    auto_release();
+    rfcomm_decline_connection(cid);
+    taskENTER_CRITICAL(&state_mux);
+    if (active_cid == cid) {
+        session_active = false;
+        active_cid = 0;
+    }
+    taskEXIT_CRITICAL(&state_mux);
+}
+
+/* name: NULL when the phone didn't answer the name request. */
+static void auto_decide(const char *name) {
+    bool secure = name == NULL || !is_s60v1_name(name);
+    ESP_LOGI(TAG, "auto security: phone '%s' -> %s",
+             name ? name : "(no name)",
+             secure ? "authentication + encryption" : "S60v1, no security");
+
+    taskENTER_CRITICAL(&state_mux);
+    strlcpy(last_phone_name, name ? name : "", sizeof(last_phone_name));
+    last_phone_secured = secure;
+    last_phone_valid = true;
+    taskEXIT_CRITICAL(&state_mux);
+
+    if (!secure) {
+        uint16_t cid = auto_cid;
+        auto_release();
+        rfcomm_accept_connection(cid);
+        return;
+    }
+    auto_sec_pending = true;
+    gap_request_security_level(auto_handle, LEVEL_2);
+}
+
+static void auto_begin(uint16_t cid, hci_con_handle_t handle,
+                       const bd_addr_t addr) {
+    auto_cid = cid;
+    auto_handle = handle;
+    bd_addr_copy(auto_addr, addr);
+    auto_sec_pending = false;
+    /* The ACL is already up, so the controller asks over it and ignores
+     * the page scan mode (R1) and clock offset. */
+    if (gap_remote_name_request(addr, 1, 0) != ERROR_CODE_SUCCESS) {
+        auto_decide(NULL);
+    }
+}
+
+static void auto_hci_handler(uint8_t packet_type, uint16_t channel,
+                             uint8_t *packet, uint16_t size) {
+    (void)channel; (void)size;
+    if (packet_type != HCI_EVENT_PACKET || auto_cid == 0) return;
+
+    switch (hci_event_packet_get_type(packet)) {
+        case HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE: {
+            if (auto_sec_pending) break;
+            bd_addr_t addr;
+            hci_event_remote_name_request_complete_get_bd_addr(packet, addr);
+            if (bd_addr_cmp(addr, auto_addr) != 0) break;
+            if (hci_event_remote_name_request_complete_get_status(packet) != 0) {
+                auto_decide(NULL);
+                break;
+            }
+            /* up to 248 bytes, NUL-terminated only when shorter */
+            const char *rn =
+                hci_event_remote_name_request_complete_get_remote_name(packet);
+            char name[BT_NAME_MAX];
+            size_t n = strnlen(rn, sizeof(name) - 1);
+            memcpy(name, rn, n);
+            name[n] = '\0';
+            auto_decide(name);
+            break;
+        }
+        case GAP_EVENT_SECURITY_LEVEL: {
+            if (!auto_sec_pending) break;
+            if (gap_event_security_level_get_handle(packet) != auto_handle) break;
+            uint8_t status = gap_event_security_level_get_status(packet);
+            gap_security_level_t level = (gap_security_level_t)
+                gap_event_security_level_get_security_level(packet);
+            if (status != 0 || level < LEVEL_2) {
+                auto_fail("authentication or encryption failed");
+                break;
+            }
+            uint16_t cid = auto_cid;
+            auto_release();
+            rfcomm_accept_connection(cid);
+            break;
+        }
+        default:
+            break;
+    }
 }
 
 // ============================================================
@@ -335,6 +499,12 @@ static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel,
                 ESP_LOGW(TAG, "incoming RFCOMM (ch %u) from %s while busy — declined",
                          server_ch, bd_addr_to_str(addr));
                 rfcomm_decline_connection(cid);
+            } else if (link_mode == BTSEC_AUTO) {
+                ESP_LOGI(TAG, "incoming RFCOMM ch %u from %s — asking its name",
+                         server_ch, bd_addr_to_str(addr));
+                auto_begin(cid,
+                           rfcomm_event_incoming_connection_get_con_handle(packet),
+                           addr);
             } else {
                 ESP_LOGI(TAG, "incoming RFCOMM ch %u from %s — accepting",
                          server_ch, bd_addr_to_str(addr));
@@ -348,6 +518,7 @@ static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel,
             cid = rfcomm_event_channel_opened_get_rfcomm_cid(packet);
             if (status != 0) {
                 ESP_LOGW(TAG, "RFCOMM open failed, status 0x%02x", status);
+                if (cid == auto_cid) auto_release();
                 taskENTER_CRITICAL(&state_mux);
                 if (active_cid == cid || active_cid == 0) {
                     session_active = false;
@@ -437,6 +608,17 @@ static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel,
             taskEXIT_CRITICAL(&state_mux);
             if (!ours) break;
 
+            if (cid == auto_cid) {
+                /* the phone gave up while auto mode held the accept */
+                ESP_LOGI(TAG, "RFCOMM channel closed before it was accepted");
+                auto_release();
+                taskENTER_CRITICAL(&state_mux);
+                session_active = false;
+                active_cid = 0;
+                taskEXIT_CRITICAL(&state_mux);
+                break;
+            }
+
             ESP_LOGI(TAG, "RFCOMM channel closed");
             ppp_session_stop();
             gw_on_rfcomm_closed();
@@ -469,13 +651,20 @@ void ppp_link_init(void) {
      * one), it expects the server to have authenticated and encrypted the
      * link and otherwise fails every read and write with -6005. This is what
      * "Secure Connections" / "Enable Data Encryption" did on Widcomm and
-     * BlueSoleil. Off by default, which is how S60v1 phones have always
-     * connected. BTstack takes the level when the first RFCOMM service
-     * registers, so a change needs a reboot. SDP stays open either way. */
-    link_secure = nvs_secure_load();
-    rfcomm_set_required_security_level(link_secure ? LEVEL_2 : LEVEL_0);
+     * BlueSoleil. S60v1 phones have always connected without it, and the
+     * N-Gage QD fails with it, so the default is auto: decided per phone by
+     * its name (see auto_decide). BTstack takes the level when the first
+     * RFCOMM service registers, so a change needs a reboot. SDP stays open
+     * either way. */
+    link_mode = nvs_secure_load();
+    rfcomm_set_required_security_level(link_mode == BTSEC_ON ? LEVEL_2 : LEVEL_0);
+    if (link_mode == BTSEC_AUTO) {
+        auto_hci_cb.callback = &auto_hci_handler;
+        hci_add_event_handler(&auto_hci_cb);
+    }
     ESP_LOGI(TAG, "serial channel security: %s",
-             link_secure ? "authentication + encryption required" : "off");
+             link_mode == BTSEC_ON  ? "authentication + encryption required" :
+             link_mode == BTSEC_OFF ? "off" : "auto (by phone name)");
 
     /* Automatic credit management: RX drains into a much faster WiFi
      * uplink, so no manual rfcomm_grant_credits throttling is needed. */

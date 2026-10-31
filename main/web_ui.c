@@ -710,10 +710,25 @@ static esp_err_t handler_security_get(httpd_req_t *req) {
     if (!captive_check(req)) return ESP_OK;
     set_no_cache(req, "text/html");
 
-    bool on = ppp_link_secure_get();
-    char *page = malloc(2560);
+    btsec_mode_t mode = ppp_link_secure_get();
+    const char *now = mode == BTSEC_ON  ? "required" :
+                      mode == BTSEC_OFF ? "off" : "auto (by phone name)";
+
+    /* In auto, show what the last phone was taken for: a renamed phone
+     * explains itself here. */
+    char last[BT_NAME_MAX * 6 + 64] = "";
+    char name[BT_NAME_MAX];
+    bool secured;
+    if (mode == BTSEC_AUTO && ppp_link_last_phone(name, sizeof(name), &secured)) {
+        char esc[BT_NAME_MAX * 6];
+        html_escape(name[0] ? name : "(no name)", esc, sizeof(esc));
+        snprintf(last, sizeof(last), "<br><b>Last phone:</b> %s, %s", esc,
+                 secured ? "secured" : "S60v1, not secured");
+    }
+
+    char *page = malloc(3072);
     if (!page) return ESP_ERR_NO_MEM;
-    snprintf(page, 2560,
+    snprintf(page, 3072,
         "<html><head><title>Bluetooth Security</title>"
         "<meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -722,28 +737,35 @@ static esp_err_t handler_security_get(httpd_req_t *req) {
         "<body style='font-family:sans-serif;padding:20px;text-align:center;'>"
         "<h2>Bluetooth Security</h2><hr>"
         "<div style='text-align:left;background:#ecf0f1;padding:15px;'>"
-        "<b>Now:</b> %s"
+        "<b>Now:</b> %s%s"
         "</div>"
         "<form action='/security' method='post' style='text-align:left;'>"
-        "<p><input type='checkbox' name='sec' value='1'%s> "
+        "<p><input type='radio' name='sec' value='auto'%s> <b>Auto</b><br>"
+        "<small>Off for S60 1st Edition phones, recognised by their "
+        "Bluetooth name (N-Gage, 3650, 3660, 7650), on for every other "
+        "phone. A phone renamed away from its model counts as \"other\".</small></p>"
+        "<p><input type='radio' name='sec' value='on'%s> "
         "<b>Require authentication and encryption</b><br>"
         "<small>The bridge authenticates and encrypts the link before a "
-        "phone can open the serial channel. Turn this on for S60 2nd "
-        "Edition phones (e.g. Nokia 7610) with gnubox. Leave it off for "
-        "S60 1st Edition phones (N-Gage, 3650, ...).</small></p>"
+        "phone can open the serial channel. S60 2nd Edition phones (e.g. "
+        "Nokia 7610) with gnubox need this.</small></p>"
+        "<p><input type='radio' name='sec' value='off'%s> <b>Off</b><br>"
+        "<small>How S60 1st Edition phones (N-Gage, 3650, ...) connect.</small></p>"
         "<p style='text-align:center;'><input type='submit' value='Save' "
         "style='font-size:110%%;'></p>"
         "</form>"
         "<p style='text-align:left;'><small>Saving a change reboots the "
-        "bridge, which drops a connected phone. With this on, a phone that "
-        "has not paired with the bridge is asked for the PIN (0000) when "
-        "it connects. Holding the board's BOOT button for 3 s also "
-        "switches it.</small></p><hr>"
+        "bridge, which drops a connected phone. With security on for a "
+        "phone, one that has not paired with the bridge is asked for the "
+        "PIN (0000) when it connects. Holding the board's BOOT button for "
+        "3 s also switches it: off, on, auto in turn.</small></p><hr>"
         "<a href='/'>Status</a>"
         "<br>" PAGE_FOOTER
         "</body></html>",
-        on ? "required" : "off",
-        on ? " checked" : "");
+        now, last,
+        mode == BTSEC_AUTO ? " checked" : "",
+        mode == BTSEC_ON   ? " checked" : "",
+        mode == BTSEC_OFF  ? " checked" : "");
 
     esp_err_t r = httpd_resp_sendstr(req, page);
     free(page);
@@ -756,13 +778,19 @@ static esp_err_t handler_security_post(httpd_req_t *req) {
     char buf[64] = {0};
     if (recv_body(req, buf, sizeof(buf)) < 0) return ESP_FAIL;
 
-    /* An unticked checkbox is simply absent from the form body. */
-    char v[4];
-    bool on = httpd_query_key_value(buf, "sec", v, sizeof(v)) == ESP_OK;
-    if (on == ppp_link_secure_get()) return redirect_to(req, "/security");
+    char v[8];
+    if (httpd_query_key_value(buf, "sec", v, sizeof(v)) != ESP_OK) {
+        return redirect_to(req, "/security");
+    }
+    btsec_mode_t mode;
+    if      (strcmp(v, "on") == 0)   mode = BTSEC_ON;
+    else if (strcmp(v, "off") == 0)  mode = BTSEC_OFF;
+    else if (strcmp(v, "auto") == 0) mode = BTSEC_AUTO;
+    else return redirect_to(req, "/security");
+    if (mode == ppp_link_secure_get()) return redirect_to(req, "/security");
 
     /* BTstack only takes the level at boot, so apply by rebooting. */
-    ppp_link_secure_save(on);
+    ppp_link_secure_save(mode);
     httpd_resp_sendstr(req,
         "<html><body><p>Saved. Rebooting...</p></body></html>");
     gw_safe_task_create(reboot_task, "reboot", 2048, NULL, 3, NULL);

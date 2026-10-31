@@ -1,13 +1,15 @@
 /*
  * sec_button.c — switch Bluetooth security from the board's BOOT button.
  *
- * The /security page is the normal way to switch it, but a brand-new bridge
- * has no WiFi and an S60 2nd Edition phone can't dial in (and so can't reach
- * the web UI) until security is on. The button breaks that loop:
+ * The /security page is the normal way to switch it, but a bridge without
+ * WiFi can't be reached from a phone whose dial-in fails at the current
+ * setting (an S60 2nd Edition phone with security off, or a renamed S60v1
+ * phone in auto). The button breaks that loop:
  *
- *   long press (hold >= SEC_BTN_HOLD_MS) — flip the saved setting, blink
- *       the LED 3 times for on or once for off, then reboot to apply it
- *   short press — blink the setting in effect now, same code, no change
+ *   long press (hold >= SEC_BTN_HOLD_MS) — step the saved mode
+ *       off -> on -> auto -> off, blink the LED once for off, 3 times for on
+ *       or twice for auto, then reboot to apply it
+ *   short press — blink the mode in effect now, same code, no change
  *
  * The button is read only after boot. Holding BOOT while the board resets
  * still enters the ROM download mode, as on any ESP32, so the reboot waits
@@ -45,9 +47,9 @@ static void led_set(bool on) {
     gpio_set_level(SEC_LED_GPIO, on ? SEC_LED_ON_LEVEL : !SEC_LED_ON_LEVEL);
 }
 
-/* 3 blinks = security on, 1 blink = off. */
-static void led_show(bool secure) {
-    int n = secure ? 3 : 1;
+/* 1 blink = off, 3 = on, 2 = auto. */
+static void led_show(btsec_mode_t mode) {
+    int n = mode == BTSEC_OFF ? 1 : mode == BTSEC_ON ? 3 : 2;
     for (int i = 0; i < n; i++) {
         led_set(true);
         vTaskDelay(pdMS_TO_TICKS(SEC_BLINK_MS));
@@ -78,13 +80,15 @@ static void sec_button_task(void *arg) {
             continue;
         }
 
-        /* Flip the saved value, not the one in effect: a change saved from
-         * the web UI and still waiting for a reboot counts as current. */
-        bool on = !ppp_link_secure_saved();
+        /* Step from the saved value, not the one in effect: a change saved
+         * from the web UI and still waiting for a reboot counts as current. */
+        btsec_mode_t cur = ppp_link_secure_saved();
+        btsec_mode_t next = cur == BTSEC_OFF ? BTSEC_ON :
+                            cur == BTSEC_ON  ? BTSEC_AUTO : BTSEC_OFF;
         ESP_LOGI(TAG, "BOOT long press: Bluetooth security -> %s",
-                 on ? "on" : "off");
-        ppp_link_secure_save(on);
-        led_show(on);
+                 btsec_mode_str(next));
+        ppp_link_secure_save(next);
+        led_show(next);
         wait_release();
         ESP_LOGI(TAG, "rebooting to apply");
         vTaskDelay(pdMS_TO_TICKS(200));
