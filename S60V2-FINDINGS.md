@@ -61,8 +61,44 @@ opened.
 ## S60 1st Edition needs it off
 
 With security on, an N-Gage QD cannot connect, so the switch defaults to off.
-Not traced yet; S60v1's gnubox writes `BTCOMM::0` and its security handling
-differs.
+With it off, the same QD connects straight away and browses normally.
+
+A partial log of one attempt with security on (QD `00:0E:6D:D4:B7:25`,
+2026-10-31). Debug logging had been switched off shortly before, so there is
+no HCI packet trace, only the bridge's own event lines:
+
+| time | event |
+|---|---|
+| 516.0 s | QD connects |
+| 516.2 s | link-key request; the stored key is used, no PIN |
+| 516.3 s | `Authentication complete status=0x00` |
+| 516.4 s | `Encryption change status=0x00 enabled=1` |
+| after | the controller prints `ASSERT_WARN(1 9), in lc_task.c at line 1556` twice |
+| 528.4 s | QD authenticates again: link-key request, `Authentication complete status=0x00` |
+| 528.5 s | `Command status error=0x0c opcode=0x0c53` (*Command Disallowed*) |
+| after | four more `ASSERT_WARN(1 9)` from `lc_task.c:1556` |
+| 545 s | security switched off, bridge reboots |
+
+The QD never opened the serial channel: no `incoming RFCOMM` line at all.
+
+What this does and does not show:
+
+- It is **not** a pairing or encryption failure. The QD authenticates with
+  the stored key and the link encrypts. Whatever fails comes after that.
+- The rejected opcode `0x0c53` is not a command BTstack defines anywhere in
+  its tree (`hci_cmd.c`/`hci_cmd.h`), so where it came from is unknown.
+- `ASSERT_WARN(... 9), in lc_task.c at line 1556` is from Espressif's
+  closed-source controller. The same line also appeared, seven times, just
+  before the 2026-08-05 controller reboot recorded in the README's open
+  issue, so it may be a weak spot in the controller rather than a QD
+  problem. Its meaning can't be read from our side.
+- S60v1's gnubox writes `BTCOMM::0` and handles security differently from
+  v1.1, which may also matter.
+
+To trace it fully: switch security on, tick *HCI packet trace* and *BTstack
+internal log* on `/debug`, capture the serial console, and connect the QD
+once. The trace would show what the QD sends after encryption and what
+command the controller rejects.
 
 ## Also fixed in this session
 
