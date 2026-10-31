@@ -737,7 +737,8 @@ static esp_err_t handler_security_get(httpd_req_t *req) {
         "<p style='text-align:left;'><small>Saving a change reboots the "
         "bridge, which drops a connected phone. With this on, a phone that "
         "has not paired with the bridge is asked for the PIN (0000) when "
-        "it connects.</small></p><hr>"
+        "it connects. Holding the board's BOOT button for 3 s also "
+        "switches it.</small></p><hr>"
         "<a href='/'>Status</a>"
         "<br>" PAGE_FOOTER
         "</body></html>",

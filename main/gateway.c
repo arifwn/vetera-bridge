@@ -449,6 +449,7 @@ int btstack_main(int argc, const char *argv[]) {
     gw_safe_task_create(watchdog_task, "wdt", 4096, NULL, 2, NULL);
     web_ui_start();
     bt_setup();
+    sec_button_start();     /* after bt_setup: it reads the security level */
     hci_power_control(HCI_POWER_ON);
 
     /* The device name isn't known until the controller reports its address —

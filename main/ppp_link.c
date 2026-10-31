@@ -92,6 +92,10 @@ bool ppp_link_secure_get(void) {
     return link_secure;
 }
 
+bool ppp_link_secure_saved(void) {
+    return nvs_secure_load();
+}
+
 void ppp_link_secure_save(bool on) {
     nvs_handle_t h;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;

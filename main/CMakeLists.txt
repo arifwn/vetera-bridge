@@ -11,6 +11,7 @@ idf_component_register(
         "bookmarks.c"
         "dns_fwd.c"
         "debug_log.c"
+        "sec_button.c"
 
     INCLUDE_DIRS "."
 
@@ -24,4 +25,5 @@ idf_component_register(
         freertos
         esp_timer
         esp_coex
+        esp_driver_gpio
 )

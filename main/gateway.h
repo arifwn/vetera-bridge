@@ -87,6 +87,7 @@ const char *bt_rssi_str(char *buf, int len);   /* "-42", or "n/a" if polling off
 void ppp_link_init(void);       /* BTstack task, before hci_power_on */
 bool ppp_link_up(void);
 bool ppp_link_secure_get(void);         /* in effect since boot */
+bool ppp_link_secure_saved(void);       /* saved, applies on next boot */
 void ppp_link_secure_save(bool on);     /* any task; applies on reboot */
 uint32_t ppp_link_tx_dropped(void);
 void update_nat(void);          /* callable from any task */
@@ -157,6 +158,9 @@ bool bookmarks_get(int index, bookmark_t *out);
 bool bookmarks_set(int index, const char *title, const char *url);
                                     /* index < 0 appends */
 bool bookmarks_remove(int index);
+
+/* sec_button.c — BOOT button switches Bluetooth security (see the file). */
+void sec_button_start(void);
 
 /* web_ui.c */
 void web_ui_start(void);
