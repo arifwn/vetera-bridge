@@ -328,7 +328,7 @@ or "Enable Data Encryption" (BlueSoleil). The full investigation is in
 
 1. **Security**: nothing to do with the default, **auto**, as long as the
    phone keeps its factory Bluetooth name. Any name that isn't an S60 1st
-   Edition model gets security. A bridge set to off needs switching to auto or
+   Edition or Communicator model gets security. A bridge set to off needs switching to auto or
    on first, see [Bluetooth security](#bluetooth-security).
 2. **Pair**: phone → Connectivity → Bluetooth → pair with **Vetera Bridge
    &lt;number&gt;** → PIN `0000`.
@@ -350,7 +350,7 @@ or "Enable Data Encryption" (BlueSoleil). The full investigation is in
    open `c:\nokia\ctest.txt`. Healthy is `123456Error = 0` and
    `78 Error = -3`. `Error = -6005` means the bridge didn't secure the link:
    its switch is off (or not applied yet), or it is on auto and the phone's
-   name contains an S60 1st Edition model number.
+   name contains an S60 1st Edition or Communicator model number.
 7. Open Opera with access point `Bt` and load `http://192.168.7.1`.
    Opera 8.65 for S60 2nd Edition is still on Opera's FTP archive, in three
    language sets (Symbian 7.0s builds):
@@ -371,8 +371,9 @@ The `/security` page has three settings:
 
 - **Auto** (default): when a phone opens the serial channel, the bridge asks
   for its Bluetooth name. A name containing `N-Gage`, `NGage`, `3650`,
-  `3600`, `3660`, `3620` or `7650` (any case) connects without security, like
-  S60 1st Edition always has. Any other name gets authentication and
+  `3600`, `3660`, `3620`, `7650`, `9210`, `9290`, `9300` (also matches the
+  9300i) or `9500` (any case) connects without security, like S60 1st
+  Edition and the Series 80 Communicators always have. Any other name gets authentication and
   encryption first, which S60 2nd Edition needs. The page shows the last
   phone's name and what the bridge decided, and the serial log has an
   `auto security: phone '...'` line per connection.

@@ -127,14 +127,17 @@ const char *btsec_mode_str(btsec_mode_t mode) {
  * S60 1st Edition phones connect without security and the N-Gage QD fails
  * with it; S60 2nd Edition phones fail without it (see ppp_link_init). In auto
  * the L2CAP level stays at 0 and the RFCOMM accept is held while the bridge
- * asks the phone for its name: a factory S60v1 name is accepted as is, any
- * other name (or none) gets authentication + encryption first. A phone renamed
- * away from its model number therefore counts as S60v2. */
-static const char *const s60v1_names[] = {
+ * asks the phone for its name: a factory name from the list below (S60 1st
+ * Edition, Series 80 Communicators) is accepted as is, any other name (or none)
+ * gets authentication + encryption first. A phone renamed away from its model
+ * number therefore counts as S60v2. */
+static const char *const nosec_names[] = {
     "N-Gage", "NGage",                  /* classic and QD */
     "3650", "3600",                     /* 3600: the 3650's Americas model */
     "3660", "3620",                     /* 3620: the 3660's Americas model */
     "7650",
+    "9210", "9290",                     /* Series 80: 9210/9210i, 9290 its Americas model */
+    "9300", "9500",                     /* 9300 also matches the 9300i */
 };
 
 static uint16_t auto_cid = 0;           /* RFCOMM channel held, 0 = none */
@@ -168,9 +171,9 @@ static bool contains_nocase(const char *hay, const char *needle) {
     return false;
 }
 
-static bool is_s60v1_name(const char *name) {
-    for (size_t i = 0; i < sizeof(s60v1_names) / sizeof(s60v1_names[0]); i++) {
-        if (contains_nocase(name, s60v1_names[i])) return true;
+static bool is_nosec_name(const char *name) {
+    for (size_t i = 0; i < sizeof(nosec_names) / sizeof(nosec_names[0]); i++) {
+        if (contains_nocase(name, nosec_names[i])) return true;
     }
     return false;
 }
@@ -195,10 +198,10 @@ static void auto_fail(const char *why) {
 
 /* name: NULL when the phone didn't answer the name request. */
 static void auto_decide(const char *name) {
-    bool secure = name == NULL || !is_s60v1_name(name);
+    bool secure = name == NULL || !is_nosec_name(name);
     ESP_LOGI(TAG, "auto security: phone '%s' -> %s",
              name ? name : "(no name)",
-             secure ? "authentication + encryption" : "S60v1, no security");
+             secure ? "authentication + encryption" : "known model, no security");
 
     taskENTER_CRITICAL(&state_mux);
     strlcpy(last_phone_name, name ? name : "", sizeof(last_phone_name));

@@ -723,7 +723,7 @@ static esp_err_t handler_security_get(httpd_req_t *req) {
         char esc[BT_NAME_MAX * 6];
         html_escape(name[0] ? name : "(no name)", esc, sizeof(esc));
         snprintf(last, sizeof(last), "<br><b>Last phone:</b> %s, %s", esc,
-                 secured ? "secured" : "S60v1, not secured");
+                 secured ? "secured" : "known model, not secured");
     }
 
     char *page = malloc(3072);
@@ -741,8 +741,9 @@ static esp_err_t handler_security_get(httpd_req_t *req) {
         "</div>"
         "<form action='/security' method='post' style='text-align:left;'>"
         "<p><input type='radio' name='sec' value='auto'%s> <b>Auto</b><br>"
-        "<small>Off for S60 1st Edition phones, recognised by their "
-        "Bluetooth name (N-Gage, 3650, 3660, 7650), on for every other "
+        "<small>Off for S60 1st Edition phones and Nokia Communicators, "
+        "recognised by their Bluetooth name (N-Gage, 3650, 3660, 7650, "
+        "9210, 9290, 9300, 9500), on for every other "
         "phone. A phone renamed away from its model counts as \"other\".</small></p>"
         "<p><input type='radio' name='sec' value='on'%s> "
         "<b>Require authentication and encryption</b><br>"
