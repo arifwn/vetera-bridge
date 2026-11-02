@@ -39,7 +39,8 @@ apps on the phone — just gnubox's one-time CommDB edit.
 - Watchdogs: WiFi-stuck recovery, DNS-hang restart, low-heap reboot
 - **Bluetooth security switch** on `/security`: makes the bridge authenticate
   and encrypt the link before a phone opens the serial channel. S60 2nd
-  Edition phones with gnubox need it on; S60 1st Edition phones need it off.
+  Edition phones with gnubox need it on; S60 1st Edition phones and the
+  Series 80 Communicators need it off.
   The default, **auto**, decides per phone from its Bluetooth name, so both
   kinds work on one bridge with no setup. Also switchable from the board's
   BOOT button, see [Bluetooth security](#bluetooth-security)
@@ -364,6 +365,54 @@ Only the 7610 has been tested. The other FP1 phones gnubox v1.1 supports
 The bridge also advertises a Dial-Up Networking (0x1103) record next to LAP
 and Serial Port, on the Serial Port channel, and answers `AT`/`ATD` like a
 modem, for any phone setup that dials over DUN.
+
+## Phone setup (Series 80: Nokia 9300, 9300i and 9500)
+
+Leave the bridge's Bluetooth security switch (`/security`) on **auto**, the
+default, or set it **off**. Like S60 1st Edition, these phones connect without
+security, and auto recognises them by their Bluetooth name. If you renamed the
+phone so its name no longer contains the model (`9300`, `9500`), auto takes
+it for a newer phone and asks it for security: set the switch to off, or
+rename the phone back. See [Bluetooth security](#bluetooth-security).
+
+These phones need a Series 80 gnubox: Mika Raento's and -xan-'s builds are
+for S60 only. [GnuBox for Series 80](https://github.com/janseris/gnubox-s80)
+by janseris is a new implementation of the same idea. It creates its own
+`GnuBox BT` access point and leaves the phone's own records alone.
+
+1. **Pair**: Desk → Control panel → Bluetooth → pair with **Vetera Bridge
+   &lt;number&gt;** → PIN `0000`.
+2. **Install GnuBox**: download the latest `gnubox-<version>.sis` from the
+   repository's
+   [release folder](https://github.com/janseris/gnubox-s80/tree/main/release),
+   install it on the phone and start **GnuBox**.
+3. **Device** → choose the bridge from the paired devices (or `Search for a
+   new device...`). GnuBox remembers it.
+4. **Settings**:
+   - `Other device: PC (pppd)`. GnuBox then starts PPP straight away over
+     the bridge's Serial Port, the same way gnubox works on S60.
+   - `Bluetooth security: none (recommended)`. This is GnuBox's own
+     setting, separate from the bridge's switch, and should also be off.
+5. **Default** → `GnuBox BT (Bluetooth)`. Apps that use the default
+   connection then go through the bridge without asking for an access point.
+6. **Connect**. The status line shows `CONNECTED since hh:mm`. The
+   connection stays up until you press **Disconnect**, even after **Exit**.
+7. Open the built-in Web browser and load `http://192.168.7.1`. This works
+   before any WiFi is configured. Add your WiFi network(s) on the `/wifi`
+   page, and rename the unit on the `/name` page if you run more than one
+   bridge.
+
+Notes:
+
+- Don't save `GnuBox BT` in Control panel. It insists on a phone number,
+  which would turn it into a real GSM data call. **Connect** repairs the
+  access point anyway (as does Settings → `Repair access point`).
+- `Other device: Android phone (BlueDUN)` should work too, since the bridge
+  answers the `AT` / `ATD*99#` dial like a modem, but `PC (pppd)` is the
+  simpler path.
+- GnuBox's log is at `C:\Documents\GnuBox\gnubox-log.txt` on the phone.
+- Opera Mini (Java) also runs on these phones, but it loads pages through
+  Opera's servers, so it can't open the bridge's own `http://192.168.7.1`.
 
 ## Bluetooth security
 
