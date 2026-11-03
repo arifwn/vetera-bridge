@@ -21,7 +21,8 @@
 static const char *TAG = "dns_fwd";
 
 #define DNS_PORT            53
-#define DNS_TIMEOUT_MS      500
+#define DNS_TIMEOUT_MS      2000    /* whole upstream wait, per query */
+#define DNS_RECV_SLICE_MS   250     /* one recvfrom on the upstream socket */
 #define DNS_CACHE_SIZE      16
 #define DNS_MAX_PACKET      512
 #define FALLBACK_DNS        "8.8.8.8"
@@ -189,17 +190,63 @@ static int dns_make_servfail_reply(const uint8_t *query, int qlen,
     return rlen;
 }
 
+/* One upstream socket serves every query, so a reply that arrives after its
+ * query timed out is still queued when the next query is sent. Reading just
+ * one packet would pick up that stale reply, fail the ID check and SERVFAIL
+ * the new query, leaving its own reply queued for the query after: the
+ * forwarder stays one reply behind while the upstream answers everything.
+ * So drop anything queued before sending, and skip replies that aren't ours
+ * until the deadline. */
+/* For the verbose log: the first question's name ("a.b.c") and type. */
+static void dns_query_desc(const uint8_t *q, int qlen, char *name, int nmax,
+                           uint16_t *qtype) {
+    int off = 12, w = 0;
+    *qtype = 0;
+    name[0] = 0;
+    while (off < qlen) {
+        uint8_t len = q[off];
+        if (len == 0) { off++; break; }
+        if ((len & 0xC0) || off + 1 + len > qlen) return;
+        if (w && w < nmax - 1) name[w++] = '.';
+        for (int i = 0; i < len && w < nmax - 1; i++) {
+            char c = (char)q[off + 1 + i];
+            name[w++] = (c > 32 && c < 127) ? c : '?';
+        }
+        off += 1 + len;
+    }
+    name[w] = 0;
+    if (off + 2 <= qlen) *qtype = (q[off] << 8) | q[off + 1];
+}
+
 static bool dns_forward(int ext_sock, struct sockaddr_in *ext_dns,
                          const uint8_t *query, int qlen,
                          uint8_t *reply, int *rlen) {
+    struct sockaddr_in from;
+    socklen_t fl;
+
+    while (true) {
+        fl = sizeof(from);
+        if (recvfrom(ext_sock, reply, DNS_MAX_PACKET, MSG_DONTWAIT,
+                     (struct sockaddr *)&from, &fl) < 0) break;
+    }
+
     if (sendto(ext_sock, query, qlen, 0,
                (struct sockaddr *)ext_dns, sizeof(*ext_dns)) < 0) return false;
-    struct sockaddr_in from;
-    socklen_t fl = sizeof(from);
-    int n = recvfrom(ext_sock, reply, DNS_MAX_PACKET, 0,
-                     (struct sockaddr *)&from, &fl);
-    if (n >= 12 && reply[0] == query[0] && reply[1] == query[1]) {
-        *rlen = n; return true;
+
+    int64_t deadline = esp_timer_get_time() + DNS_TIMEOUT_MS * 1000LL;
+    while (esp_timer_get_time() < deadline) {
+        fl = sizeof(from);
+        int n = recvfrom(ext_sock, reply, DNS_MAX_PACKET, 0,
+                         (struct sockaddr *)&from, &fl);
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+            return false;
+        }
+        if (n >= 12 && reply[0] == query[0] && reply[1] == query[1] &&
+            from.sin_addr.s_addr == ext_dns->sin_addr.s_addr &&
+            from.sin_port == ext_dns->sin_port) {
+            *rlen = n; return true;
+        }
     }
     return false;
 }
@@ -243,7 +290,7 @@ static void dns_server_task(void *arg) {
     }
 
     struct timeval tv  = {1, 0};
-    struct timeval tv2 = {0, DNS_TIMEOUT_MS * 1000};
+    struct timeval tv2 = {0, DNS_RECV_SLICE_MS * 1000};
     setsockopt(dns_srv_sock, SOL_SOCKET, SO_RCVTIMEO, &tv,  sizeof(tv));
     setsockopt(dns_ext_sock, SOL_SOCKET, SO_RCVTIMEO, &tv2, sizeof(tv2));
 
@@ -281,10 +328,13 @@ static void dns_server_task(void *arg) {
         dns_get_upstream(&ext_dns);
 
         bool wifi_up = get_wifi_connected();
+        int64_t t0 = esp_timer_get_time();
+        const char *src = "cache";
         int rlen = 0;
         bool have_reply = dns_cache_lookup(query_buf, qlen, reply_buf, &rlen);
         if (!have_reply) {
             /* Only forward if WiFi is up, otherwise fall through to captive */
+            src = "upstream";
             if (wifi_up &&
                 dns_forward(dns_ext_sock, &ext_dns,
                             query_buf, qlen, reply_buf, &rlen)) {
@@ -293,6 +343,7 @@ static void dns_server_task(void *arg) {
             }
         }
         if (!have_reply) {
+            src = wifi_up ? "upstream failed" : "captive";
             /* WiFi up but the upstream query failed/timed out: SERVFAIL,
              * not the gateway's own IP — see dns_make_servfail_reply(). */
             rlen = wifi_up
@@ -301,9 +352,21 @@ static void dns_server_task(void *arg) {
                  : dns_make_captive_reply(query_buf, qlen,
                                           reply_buf, sizeof(reply_buf));
         }
+        int sent = -1;
         if (rlen > 0) {
-            sendto(dns_srv_sock, reply_buf, rlen, 0,
-                   (struct sockaddr *)&client, clen);
+            sent = sendto(dns_srv_sock, reply_buf, rlen, 0,
+                          (struct sockaddr *)&client, clen);
+        }
+        if (debug_log_on(DBG_VERBOSE)) {
+            char name[64], ip[16];
+            uint16_t qtype;
+            dns_query_desc(query_buf, qlen, name, sizeof(name), &qtype);
+            inet_ntoa_r(client.sin_addr, ip, sizeof(ip));
+            ESP_LOGI(TAG, "%s asked %s type %u: %s, rcode %d, %d ms%s",
+                     ip, name, qtype, src,
+                     rlen >= 4 ? (reply_buf[3] & 0x0F) : -1,
+                     (int)((esp_timer_get_time() - t0) / 1000),
+                     sent < 0 ? ", reply NOT sent" : "");
         }
     }
 

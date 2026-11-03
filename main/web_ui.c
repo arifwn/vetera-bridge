@@ -667,7 +667,7 @@ static esp_err_t handler_debug_get(httpd_req_t *req) {
         "<p><input type='checkbox' name='vrb' value='1'%s> "
         "<b>Verbose bridge events</b><br>"
         "<small>Unhandled HCI event codes, link security when a phone "
-        "opens the serial channel.</small></p>"
+        "opens the serial channel, every DNS query and its answer.</small></p>"
         "<p style='text-align:center;'><input type='submit' value='Save' "
         "style='font-size:110%%;'></p>"
         "</form>"
