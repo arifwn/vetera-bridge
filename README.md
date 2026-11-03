@@ -411,8 +411,18 @@ Notes:
   answers the `AT` / `ATD*99#` dial like a modem, but `PC (pppd)` is the
   simpler path.
 - GnuBox's log is at `C:\Documents\GnuBox\gnubox-log.txt` on the phone.
-- Opera Mini (Java) also runs on these phones, but it loads pages through
-  Opera's servers, so it can't open the bridge's own `http://192.168.7.1`.
+- **Opera Mini 4.2** works through the bridge. It's a Java app: download
+  the
+  [archived 4.2.14912 build](https://web.archive.org/web/20090812125625id_/http://mini.opera.com:80/global/opera-mini-4.2.14912-advanced-en-gb.jar?)
+  from Opera's old download server, copy the `.jar` to the phone and open
+  it. It's unsigned, so the phone may ask permission when it goes online.
+  Opera's server shows an "upgrade your browser" message, but pages still
+  load. Opera Mini loads every page through Opera's servers, so it can't
+  open the bridge's own `http://192.168.7.1`: use the built-in browser for
+  that. On the 9500, the other versions tried did worse: 4.3 doesn't use
+  the full screen width, 4.4 and 4.5 hang at first start without ever
+  going online, and 8.0 stalls at its first progress bar. 5.x to 7.x
+  haven't been tried.
 
 ## Bluetooth security
 
