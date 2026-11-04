@@ -62,7 +62,10 @@ static const char *TAG = "proxy";
 #define DOWN_SZ             1536            /* proxy -> phone                */
 #define SETUP_MS            10000           /* each setup stage              */
 #define IDLE_MS             120000          /* splicing, no bytes either way */
-#define MIN_FREE_HEAP       32768
+/* Free heap needed to take on another session. With a phone on PPP the
+ * bridge idles at ~30 KB free; the heartbeat only warns below 24 KB and
+ * reboots below 8 KB. */
+#define MIN_FREE_HEAP       20480
 
 #define NVS_NAMESPACE       "gw"
 #define NVS_KEY_ON          "px_on"
@@ -851,12 +854,9 @@ static void do_accept(int lsock, bool tls, uint32_t now) {
     for (int i = 0; i < SESS_MAX; i++) {
         if (!sess[i].used) { s = &sess[i]; break; }
     }
-    uint8_t *mem = NULL;
-    if (s && heap_caps_get_free_size(MALLOC_CAP_DEFAULT) >= MIN_FREE_HEAP) {
-        mem = malloc(UP_CAP + DOWN_SZ + 1);
-    }
+    uint8_t *mem = s ? malloc(UP_CAP + DOWN_SZ + 1) : NULL;
     if (!mem) {
-        ESP_LOGW(TAG, "[%u] no room for another session, dropped", pport);
+        ESP_LOGW(TAG, "[%u] out of memory for a session, dropped", pport);
         close(c);
         flow_mark_closed(pport);
         return;
@@ -925,8 +925,11 @@ static void proxy_task(void *arg) {
             if (sess[i].used) sess_fds(&sess[i], &rd, &wr, &maxfd);
             else room = true;
         }
+        /* With every slot busy, or the heap low, new connections wait in the
+         * backlog: accepting only to close them would fail the page. */
+        if (room && heap_caps_get_free_size(MALLOC_CAP_DEFAULT) < MIN_FREE_HEAP)
+            room = false;
         if (room) {
-            /* With every slot busy, new connections wait in the backlog */
             FD_SET(lh, &rd);
             FD_SET(lt, &rd);
             if (lh > maxfd) maxfd = lh;
@@ -951,7 +954,9 @@ static void proxy_task(void *arg) {
             sess_t *s = &sess[i];
             if (s->used && (int32_t)(now - s->deadline) > 0) {
                 if (s->st == S_SPLICE) sess_close(s, "idle");
-                else sess_fail(s, "timed out");
+                else sess_fail(s, s->st == S_HEAD ? "timed out waiting for the request" :
+                                  s->st == S_CONNECTING ? "timed out connecting to the proxy" :
+                                  "timed out waiting for the CONNECT reply");
             }
         }
     }
