@@ -446,6 +446,7 @@ int btstack_main(int argc, const char *argv[]) {
     bookmarks_init();       /* before web_ui_start: the handlers read the count */
     wifi_multi_init();
     dns_fwd_start();
+    proxy_init();
     gw_safe_task_create(watchdog_task, "wdt", 4096, NULL, 2, NULL);
     web_ui_start();
     bt_setup();

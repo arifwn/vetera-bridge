@@ -300,6 +300,10 @@ bool ppp_link_up(void) {
     return ppp_up_flag;
 }
 
+struct netif *ppp_link_netif(void) {
+    return &ppp_netif;
+}
+
 uint32_t ppp_link_tx_dropped(void) {
     return tx_dropped;
 }
@@ -383,6 +387,9 @@ static bool ppp_session_start(void) {
         ESP_LOGE(TAG, "pppos_create failed");
         return false;
     }
+    /* netif_add just set ppp_netif.output; wrap it while the link is still
+     * silent, so the proxy redirect can restore reply source addresses. */
+    proxy_attach_netif(&ppp_netif);
 
     ip4_addr_t our, his, dns;
     IP4_ADDR(&our, GW_IP0, GW_IP1, GW_IP2, GW_IP3);

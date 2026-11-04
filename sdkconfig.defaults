@@ -42,6 +42,9 @@ CONFIG_LWIP_IP_FORWARD=y
 CONFIG_LWIP_IPV4_NAPT=y
 CONFIG_LWIP_IPV4_NAPT_PORTMAP=y
 
+# Sockets: httpd 3, DNS 2, HTTP proxy relay 2 listeners + 2 per session (4)
+CONFIG_LWIP_MAX_SOCKETS=16
+
 # lwIP PPP server — terminates the phone's PPP-over-RFCOMM link.
 # PAP/CHAP/MSCHAP/MPPE deliberately stay off: no auth option must ever hit
 # the wire (old Symbian PPP crashes on auth options), and no CCP/MPPE.

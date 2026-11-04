@@ -238,6 +238,13 @@ static esp_err_t handler_root(httpd_req_t *req) {
                  st == APP_BRIDGE_NO_WIFI);
 
     char rssi_buf[8];
+    bool px_on;
+    char px_host[PROXY_HOST_MAX], px_esc[PROXY_HOST_MAX * 6], px_line[PROXY_HOST_MAX * 6 + 8];
+    uint16_t px_port;
+    proxy_get(&px_on, px_host, sizeof(px_host), &px_port);
+    html_escape(px_host, px_esc, sizeof(px_esc));
+    if (px_on) snprintf(px_line, sizeof(px_line), "%s:%u", px_esc, (unsigned)px_port);
+    else       strlcpy(px_line, "off", sizeof(px_line));
     int bmc = bookmarks_count();
     size_t sz = 3072 + bm_escaped_total() + (size_t)bmc * 64;
     char *page = malloc(sz);
@@ -268,6 +275,7 @@ static esp_err_t handler_root(httpd_req_t *req) {
         "<b>BT RSSI:</b> %s<br>"
         "<b>Saved networks:</b> %d/%d<br>"
         "<b>Bookmarks:</b> %d/%d<br>"
+        "<b>HTTP proxy:</b> %s<br>"
         "<b>Uptime:</b> %" PRIu32 "d %02" PRIu32 ":%02" PRIu32 ":%02" PRIu32 "<br>"
         "<b>Free heap:</b> %d KB"
         "</div><hr>"
@@ -276,6 +284,7 @@ static esp_err_t handler_root(httpd_req_t *req) {
         "<a href='/wifi'>WiFi networks</a><br>"
         "<a href='/name'>Device name</a><br>"
         "<a href='/security'>Bluetooth security</a><br>"
+        "<a href='/proxy'>HTTP proxy</a><br>"
         "<a href='/debug'>Debug logging</a><br>"
         "<a href='/reboot' style='color:#e74c3c;'>Reboot</a>"
         "<br>" PAGE_FOOTER
@@ -289,6 +298,7 @@ static esp_err_t handler_root(httpd_req_t *req) {
         bt_rssi_str(rssi_buf, sizeof(rssi_buf)),
         wifi_list_count(), WIFI_LIST_MAX,
         bmc, BM_MAX,
+        px_line,
         up / 86400, (up % 86400) / 3600, (up % 3600) / 60, up % 60,
         (int)(heap_caps_get_free_size(MALLOC_CAP_DEFAULT) / 1024));
 
@@ -798,6 +808,133 @@ static esp_err_t handler_security_post(httpd_req_t *req) {
     return ESP_OK;
 }
 
+// ============================================================
+// HTTP proxy page
+// ============================================================
+
+/* Index of the preset matching host:port, or -1 */
+static int proxy_preset_match(const char *host, uint16_t port) {
+    for (int i = 0; i < proxy_preset_count(); i++) {
+        const proxy_preset_t *p = proxy_preset_get(i);
+        if (p->port == port && strcmp(p->host, host) == 0) return i;
+    }
+    return -1;
+}
+
+static esp_err_t handler_proxy_get(httpd_req_t *req) {
+    if (!captive_check(req)) return ESP_OK;
+    set_no_cache(req, "text/html");
+
+    bool on;
+    char host[PROXY_HOST_MAX];
+    uint16_t port;
+    proxy_get(&on, host, sizeof(host), &port);
+    int match = host[0] ? proxy_preset_match(host, port) : -1;
+
+    char host_esc[PROXY_HOST_MAX * 6];
+    html_escape(host, host_esc, sizeof(host_esc));
+    char port_str[8] = "";
+    if (port) snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
+
+    char now[PROXY_HOST_MAX * 6 + 64];
+    if (on) snprintf(now, sizeof(now), "on, %s:%u, %d active", host_esc,
+                     (unsigned)port, proxy_active_sessions());
+    else    snprintf(now, sizeof(now), "off");
+
+    const size_t sz = 4608;
+    char *page = malloc(sz);
+    if (!page) return ESP_ERR_NO_MEM;
+    int w = page_add(page, sz, 0,
+        "<html><head><title>HTTP Proxy</title>"
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='format-detection' content='telephone=no'>"
+        "</head>"
+        "<body style='font-family:sans-serif;padding:20px;text-align:center;'>"
+        "<h2>HTTP Proxy</h2><hr>"
+        "<div style='text-align:left;background:#ecf0f1;padding:15px;'>"
+        "<b>Now:</b> %s"
+        "</div>"
+        "<form action='/proxy' method='post' style='text-align:left;'>"
+        "<p><input type='radio' name='px' value='off'%s> <b>Off</b><br>"
+        "<small>The phone reaches web sites directly.</small></p>",
+        now, on ? "" : " checked");
+
+    for (int i = 0; i < proxy_preset_count(); i++) {
+        const proxy_preset_t *p = proxy_preset_get(i);
+        w = page_add(page, sz, w,
+            "<p><input type='radio' name='px' value='%d'%s> <b>%s</b> "
+            "(%s:%u)<br><small>%s</small></p>",
+            i, on && match == i ? " checked" : "",
+            p->name, p->host, (unsigned)p->port, p->note);
+    }
+
+    page_add(page, sz, w,
+        "<p><input type='radio' name='px' value='custom'%s> <b>Custom</b><br>"
+        /* double quotes around value: html_escape covers " but not ' */
+        "Host: <input type='text' name='host' size='18' maxlength='%d' "
+        "value=\"%s\"><br>"
+        "Port: <input type='text' name='port' size='6' maxlength='5' "
+        "value='%s'></p>"
+        "<p style='text-align:center;'><input type='submit' value='Save' "
+        "style='font-size:110%%;'></p>"
+        "</form>"
+        "<p style='text-align:left;'><small>With a proxy on, every connection "
+        "the phone opens to port 80 or 443 goes through it, with nothing to set "
+        "up in the browser. This page (" GW_IP_STR ") is never proxied. "
+        "HTTPS goes through as a CONNECT tunnel, so the HTTPS presets need "
+        "their root CA installed on the phone (from 15pmm01.com). Presets are "
+        "from 15pmm01.com/wap/en.</small></p><hr>"
+        "<a href='/'>Status</a>"
+        "<br>" PAGE_FOOTER
+        "</body></html>",
+        on && match < 0 ? " checked" : "",
+        PROXY_HOST_MAX - 1, match < 0 ? host_esc : "",
+        match < 0 ? port_str : "");
+
+    esp_err_t r = httpd_resp_sendstr(req, page);
+    free(page);
+    return r;
+}
+
+static esp_err_t handler_proxy_post(httpd_req_t *req) {
+    char buf[256] = {0};
+    if (recv_body(req, buf, sizeof(buf)) < 0) return ESP_FAIL;
+
+    char v[8] = {0};
+    if (httpd_query_key_value(buf, "px", v, sizeof(v)) != ESP_OK) {
+        return redirect_to(req, "/proxy");
+    }
+
+    bool on;
+    char host[PROXY_HOST_MAX];
+    uint16_t port;
+    proxy_get(&on, host, sizeof(host), &port);
+
+    if (strcmp(v, "off") == 0) {
+        /* keep host and port, so switching back on is one tap */
+        proxy_set(false, host, port);
+    } else if (strcmp(v, "custom") == 0) {
+        char raw[PROXY_HOST_MAX * 3] = {0}, rp[8] = {0};
+        char nh[PROXY_HOST_MAX] = {0};
+        httpd_query_key_value(buf, "host", raw, sizeof(raw));
+        httpd_query_key_value(buf, "port", rp, sizeof(rp));
+        form_decode(raw, nh, sizeof(nh));
+        char *s = nh;
+        while (*s == ' ') s++;
+        size_t n = strlen(s);
+        while (n && s[n - 1] == ' ') s[--n] = '\0';
+        long np = strtol(rp, NULL, 10);
+        if (s[0] && strchr(s, ' ') == NULL && np > 0 && np <= 65535) {
+            proxy_set(true, s, (uint16_t)np);
+        }
+    } else {
+        const proxy_preset_t *p = proxy_preset_get(atoi(v));
+        if (p) proxy_set(true, p->host, p->port);
+    }
+    return redirect_to(req, "/proxy");
+}
+
 static esp_err_t handler_reset(httpd_req_t *req) {
     wifi_list_clear();
     return redirect_to(req, "/wifi");
@@ -842,6 +979,8 @@ void web_ui_start(void) {
         { "/debug",       HTTP_POST, handler_debug_post, NULL },
         { "/security",    HTTP_GET,  handler_security_get, NULL },
         { "/security",    HTTP_POST, handler_security_post, NULL },
+        { "/proxy",       HTTP_GET,  handler_proxy_get, NULL },
+        { "/proxy",       HTTP_POST, handler_proxy_post, NULL },
         { "/reset",       HTTP_GET,  handler_reset,    NULL },
         { "/reboot",      HTTP_GET,  handler_reboot,   NULL },
         { "/favicon.ico", HTTP_GET,  handler_favicon,  NULL },

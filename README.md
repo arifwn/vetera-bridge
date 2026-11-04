@@ -44,6 +44,11 @@ apps on the phone — just gnubox's one-time CommDB edit.
   The default, **auto**, decides per phone from its Bluetooth name, so both
   kinds work on one bridge with no setup. Also switchable from the board's
   BOOT button, see [Bluetooth security](#bluetooth-security)
+- **HTTP proxy redirect** on `/proxy`: sends every connection the phone
+  opens to port 80 or 443 through an upstream HTTP proxy, with nothing to set
+  up on the phone. Comes with the retro-phone proxies from
+  [15pmm01.com](https://15pmm01.com/wap/en/) as presets, see
+  [HTTP proxy](#http-proxy)
 - **Debug logging switches** on `/debug`: HCI packet trace, BTstack's internal
   log and verbose bridge events, to the USB serial console. Kept across
   reboots, so a trace can cover pairing from power-on
@@ -423,6 +428,49 @@ Notes:
   the full screen width, 4.4 and 4.5 hang at first start without ever
   going online, and 8.0 stalls at its first progress bar. 5.x to 7.x
   haven't been tried.
+
+## HTTP proxy
+
+The `/proxy` page can send the phone's web traffic through an HTTP proxy, for
+services that make the modern web usable on old phones (page simplification,
+HTTPS that an old TLS stack can't handle). The phone's browser needs no proxy
+setting: the bridge redirects the traffic itself.
+
+With a proxy on:
+
+- Every TCP connection the phone opens to **port 80** of any host goes to the
+  relay on the bridge, which rewrites the request into proxy form
+  (`GET http://host/path`) and sends it to the proxy. Each request gets its
+  own connection (`Connection: close`).
+- Every connection to **port 443** goes through the proxy as a `CONNECT`
+  tunnel, to the host named in the TLS ClientHello (SNI), or to the IP the
+  phone dialled if it sends none.
+- **The bridge itself (`http://192.168.7.1`) is never proxied**, nor is DNS
+  or any other port. While WiFi is down nothing is redirected, so the captive
+  redirect to the setup pages still works.
+- The change applies at once, no reboot. Up to 4 connections are relayed at
+  a time; further ones wait their turn.
+
+Presets, from [15pmm01.com](https://15pmm01.com/wap/en/):
+
+| Preset | Proxy | Notes |
+|---|---|---|
+| HTTP Pass | `176.103.221.33:3130` | suggested for most vintage phones |
+| HTTP Lite | `176.103.221.33:3129` | low-memory phones, text output |
+| HTTP Extra Lite | `176.103.221.33:3131` | very memory-limited phones, text output |
+| HTTP WML | `176.103.221.33:3132` | phones without HTML support |
+| HTTPS | `176.103.221.33:3128` | needs its root CA installed on the phone |
+| HTTPS Legacy | `176.103.221.33:3127` | fallback for 3128, with its own root CA |
+
+**Custom** takes any host name or IP and port. The WAP gateways on that page
+(port 9201) are not HTTP proxies and can't be used here. The HTTPS presets
+re-sign sites with their own certificate, so their root CA must be installed
+on the phone first (15pmm01.com has the files and instructions). An HTTP-only
+preset may refuse `CONNECT`, in which case https:// sites fail while it is on;
+the monitor log shows `proxy refused CONNECT` with the proxy's answer.
+
+Anything that speaks a non-HTTP protocol over port 80 or 443 stops working
+while a proxy is on. Switch it off on `/proxy` to go direct again.
 
 ## Bluetooth security
 

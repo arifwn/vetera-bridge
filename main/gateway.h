@@ -99,6 +99,8 @@ bool ppp_link_last_phone(char *name, int name_len, bool *secured);
                                 /* last auto decision; false if none yet */
 uint32_t ppp_link_tx_dropped(void);
 void update_nat(void);          /* callable from any task */
+struct netif;
+struct netif *ppp_link_netif(void);     /* the PPP netif, for http_proxy.c */
 
 /* sdp_lap.c */
 void sdp_register_lap_and_spp(uint8_t lap_channel, uint8_t spp_channel);
@@ -176,5 +178,26 @@ void web_ui_start(void);
 /* dns_fwd.c */
 void dns_fwd_start(void);
 void dns_fwd_watchdog_check(void);  /* called each heartbeat from watchdog */
+
+/* http_proxy.c — with the proxy on, the phone's connections to port 80/443
+ * of any host but the bridge go through an upstream HTTP proxy. */
+#define PROXY_HOST_MAX  64      /* incl. NUL */
+
+typedef struct {
+    const char *name;
+    const char *host;
+    uint16_t    port;
+    const char *note;
+} proxy_preset_t;
+
+void proxy_init(void);                  /* NVS load + relay task */
+void proxy_attach_netif(struct netif *n);   /* after the PPP netif is created,
+                                             * before it carries traffic */
+void proxy_get(bool *on, char *host, int host_len, uint16_t *port);
+void proxy_set(bool on, const char *host, uint16_t port);  /* any task; saved,
+                                                            * applied at once */
+int  proxy_active_sessions(void);
+int  proxy_preset_count(void);
+const proxy_preset_t *proxy_preset_get(int i);
 
 #endif
