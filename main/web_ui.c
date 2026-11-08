@@ -750,18 +750,19 @@ static esp_err_t handler_security_get(httpd_req_t *req) {
         "<b>Now:</b> %s%s"
         "</div>"
         "<form action='/security' method='post' style='text-align:left;'>"
-        "<p><input type='radio' name='sec' value='auto'%s> <b>Auto</b><br>"
-        "<small>Off for S60 1st Edition phones and Nokia Communicators, "
-        "recognised by their Bluetooth name (N-Gage, 3650, 3660, 7650, "
-        "9210, 9290, 9300, 9500), on for every other "
-        "phone. A phone renamed away from its model counts as \"other\".</small></p>"
+        "<p><input type='radio' name='sec' value='off'%s> <b>Off</b> (default)<br>"
+        "<small>How S60 1st Edition phones (N-Gage, 3650, ...) and the "
+        "Series 80 Communicators connect.</small></p>"
         "<p><input type='radio' name='sec' value='on'%s> "
         "<b>Require authentication and encryption</b><br>"
         "<small>The bridge authenticates and encrypts the link before a "
         "phone can open the serial channel. S60 2nd Edition phones (e.g. "
         "Nokia 7610) with gnubox need this.</small></p>"
-        "<p><input type='radio' name='sec' value='off'%s> <b>Off</b><br>"
-        "<small>How S60 1st Edition phones (N-Gage, 3650, ...) connect.</small></p>"
+        "<p><input type='radio' name='sec' value='auto'%s> <b>Auto</b><br>"
+        "<small>Off for S60 1st Edition phones and Nokia Communicators, "
+        "recognised by their Bluetooth name (N-Gage, 3650, 3660, 7650, "
+        "9210, 9290, 9300, 9500), on for every other "
+        "phone. A phone renamed away from its model counts as \"other\".</small></p>"
         "<p style='text-align:center;'><input type='submit' value='Save' "
         "style='font-size:110%%;'></p>"
         "</form>"
@@ -774,9 +775,9 @@ static esp_err_t handler_security_get(httpd_req_t *req) {
         "<br>" PAGE_FOOTER
         "</body></html>",
         now, last,
-        mode == BTSEC_AUTO ? " checked" : "",
+        mode == BTSEC_OFF  ? " checked" : "",
         mode == BTSEC_ON   ? " checked" : "",
-        mode == BTSEC_OFF  ? " checked" : "");
+        mode == BTSEC_AUTO ? " checked" : "");
 
     esp_err_t r = httpd_resp_sendstr(req, page);
     free(page);

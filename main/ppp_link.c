@@ -75,22 +75,23 @@ static bool ppp_frame_seen = false;
 static const char *pre_ppp_reply = NULL;
 
 /* --- serial channel security (web UI /security), read once at boot ---
- * NVS: absent = auto, 0 = off, 1 = on. Units from before auto existed stored
- * off as an absent key, so they come up in auto. */
+ * NVS: absent = off (the default), 0 = off, 1 = on, 2 = auto. Up to v1.10.0
+ * auto was the default and stored as an absent key, so those units come up
+ * in off after the upgrade. */
 #define NVS_NAMESPACE   "gw"        /* same namespace wifi_multi.c uses */
 #define NVS_KEY_SECURE  "btsec"
 
-static btsec_mode_t link_mode = BTSEC_AUTO;
+static btsec_mode_t link_mode = BTSEC_OFF;
 
 static btsec_mode_t nvs_secure_load(void) {
     nvs_handle_t h;
-    uint8_t v = BTSEC_AUTO;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return BTSEC_AUTO;
+    uint8_t v = BTSEC_OFF;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return BTSEC_OFF;
     nvs_get_u8(h, NVS_KEY_SECURE, &v);
     nvs_close(h);
-    if (v == BTSEC_OFF) return BTSEC_OFF;
     if (v == BTSEC_ON) return BTSEC_ON;
-    return BTSEC_AUTO;
+    if (v == BTSEC_AUTO) return BTSEC_AUTO;
+    return BTSEC_OFF;
 }
 
 btsec_mode_t ppp_link_secure_get(void) {
@@ -104,11 +105,7 @@ btsec_mode_t ppp_link_secure_saved(void) {
 void ppp_link_secure_save(btsec_mode_t mode) {
     nvs_handle_t h;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
-    if (mode == BTSEC_AUTO) {
-        nvs_erase_key(h, NVS_KEY_SECURE);   /* absent = auto */
-    } else {
-        nvs_set_u8(h, NVS_KEY_SECURE, (uint8_t)mode);
-    }
+    nvs_set_u8(h, NVS_KEY_SECURE, (uint8_t)mode);
     nvs_commit(h);
     nvs_close(h);
     ESP_LOGI(TAG, "serial channel security saved as %s, applies on reboot",

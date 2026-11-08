@@ -40,10 +40,10 @@ apps on the phone — just gnubox's one-time CommDB edit.
 - **Bluetooth security switch** on `/security`: makes the bridge authenticate
   and encrypt the link before a phone opens the serial channel. S60 2nd
   Edition phones with gnubox need it on; S60 1st Edition phones and the
-  Series 80 Communicators need it off.
-  The default, **auto**, decides per phone from its Bluetooth name, so both
-  kinds work on one bridge with no setup. Also switchable from the board's
-  BOOT button, see [Bluetooth security](#bluetooth-security)
+  Series 80 Communicators need it off, the default.
+  **Auto** decides per phone from its Bluetooth name, so both kinds work on
+  one bridge. Also switchable from the board's BOOT button, see
+  [Bluetooth security](#bluetooth-security)
 - **HTTP proxy redirect** on `/proxy`: sends every connection the phone
   opens to port 80 or 443 through an upstream HTTP proxy, with nothing to set
   up on the phone. Comes with the retro-phone proxies from
@@ -147,12 +147,12 @@ commit gives a different app-image hash.
 
 ## Phone setup (S60 1st Edition. Tested on the N-Gage Classic, N-Gage QD, Nokia 3650 and Nokia 7650)
 
-Leave the bridge's Bluetooth security switch (`/security`) on **auto**, the
-default, or set it **off**. Auto recognises these phones by their Bluetooth
-name and connects them without security. With security on, the N-Gage QD
-cannot connect. If you renamed the phone so its name no longer contains the
-model (`N-Gage`, `3650`, `7650`, ...), auto takes it for a newer phone: set
-the switch to off, or rename the phone back. See
+Leave the bridge's Bluetooth security switch (`/security`) on **off**, the
+default, or set it to **auto**, which recognises these phones by their
+Bluetooth name and connects them without security. With security on, the
+N-Gage QD cannot connect. If you renamed the phone so its name no longer
+contains the model (`N-Gage`, `3650`, `7650`, ...), auto takes it for a newer
+phone: set the switch to off, or rename the phone back. See
 [Bluetooth security](#bluetooth-security).
 
 1. **Pair**: phone → Connectivity → Bluetooth → Paired devices → New paired
@@ -333,10 +333,12 @@ what the old Windows tutorials meant by ticking "Secure Connections" (Widcomm)
 or "Enable Data Encryption" (BlueSoleil). The full investigation is in
 [S60V2-FINDINGS.md](S60V2-FINDINGS.md).
 
-1. **Security**: nothing to do with the default, **auto**, as long as the
-   phone keeps its factory Bluetooth name. Any name that isn't an S60 1st
-   Edition or Communicator model gets security. A bridge set to off needs switching to auto or
-   on first, see [Bluetooth security](#bluetooth-security).
+1. **Security**: the default, **off**, doesn't work for these phones. Switch
+   the bridge to **on**, or to **auto** if S60 1st Edition or Communicator
+   phones share it (auto secures any phone whose name isn't one of those
+   models, so keep the factory Bluetooth name). Use `/security` from a phone
+   that already connects, or the BOOT button, see
+   [Bluetooth security](#bluetooth-security).
 2. **Pair**: phone → Connectivity → Bluetooth → pair with **Vetera Bridge
    &lt;number&gt;** → PIN `0000`.
 3. **Access point** named exactly `Bt`, bearer **Data call** (not GPRS),
@@ -374,12 +376,12 @@ modem, for any phone setup that dials over DUN.
 
 ## Phone setup (Series 80: Nokia 9300, 9300i and 9500)
 
-Leave the bridge's Bluetooth security switch (`/security`) on **auto**, the
-default, or set it **off**. Like S60 1st Edition, these phones connect without
-security, and auto recognises them by their Bluetooth name. If you renamed the
-phone so its name no longer contains the model (`9300`, `9500`), auto takes
-it for a newer phone and asks it for security: set the switch to off, or
-rename the phone back. See [Bluetooth security](#bluetooth-security).
+Leave the bridge's Bluetooth security switch (`/security`) on **off**, the
+default, or set it to **auto**. Like S60 1st Edition, these phones connect
+without security, and auto recognises them by their Bluetooth name. If you
+renamed the phone so its name no longer contains the model (`9300`, `9500`),
+auto takes it for a newer phone and asks it for security: set the switch to
+off, or rename the phone back. See [Bluetooth security](#bluetooth-security).
 
 These phones need a Series 80 gnubox: Mika Raento's and -xan-'s builds are
 for S60 only. [GnuBox for Series 80](https://github.com/janseris/gnubox-s80)
@@ -495,7 +497,11 @@ while a proxy is on. Switch it off on `/proxy` to go direct again.
 
 The `/security` page has three settings:
 
-- **Auto** (default): when a phone opens the serial channel, the bridge asks
+- **Off** (default): no phone gets security. S60 1st Edition phones and the
+  Series 80 Communicators connect this way.
+- **On**: every phone gets authentication and encryption, which S60 2nd
+  Edition needs.
+- **Auto**: when a phone opens the serial channel, the bridge asks
   for its Bluetooth name. A name containing `N-Gage`, `NGage`, `3650`,
   `3600`, `3660`, `3620`, `7650`, `9210`, `9290`, `9300` (also matches the
   9300i) or `9500` (any case) connects without security, like S60 1st
@@ -503,11 +509,10 @@ The `/security` page has three settings:
   encryption first, which S60 2nd Edition needs. The page shows the last
   phone's name and what the bridge decided, and the serial log has an
   `auto security: phone '...'` line per connection.
-- **On**: every phone gets authentication and encryption.
-- **Off**: no phone does.
 
-Saving a change reboots the bridge. A bridge that has never had security set,
-or was set to off before auto existed, starts in auto.
+Saving a change reboots the bridge. A bridge that has never had security set
+starts in off. Up to v1.10.0 the default was auto, so a bridge that was left on
+auto comes up in off after upgrading: set auto again if you need it.
 
 **BOOT button** (works without WiFi): ESP32 dev boards have two buttons, one
 on each side of the USB port. Use the one labelled **BOOT** (or **IO0**), not
