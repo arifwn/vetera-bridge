@@ -188,6 +188,7 @@ typedef struct {
     const char *host;
     uint16_t    port;
     const char *note;
+    bool        http_only;  /* proxy refuses CONNECT: port 443 goes direct */
 } proxy_preset_t;
 
 void proxy_init(void);                  /* NVS load + relay task */

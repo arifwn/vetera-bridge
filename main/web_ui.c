@@ -837,8 +837,10 @@ static esp_err_t handler_proxy_get(httpd_req_t *req) {
     if (port) snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
 
     char now[PROXY_HOST_MAX * 6 + 64];
-    if (on) snprintf(now, sizeof(now), "on, %s:%u, %d active", host_esc,
-                     (unsigned)port, proxy_active_sessions());
+    bool http_only = match >= 0 && proxy_preset_get(match)->http_only;
+    if (on) snprintf(now, sizeof(now), "on, %s:%u, %d active%s", host_esc,
+                     (unsigned)port, proxy_active_sessions(),
+                     http_only ? ", HTTPS direct" : "");
     else    snprintf(now, sizeof(now), "off");
 
     const size_t sz = 4608;
@@ -883,8 +885,9 @@ static esp_err_t handler_proxy_get(httpd_req_t *req) {
         "the phone opens to port 80 or 443 goes through it, with nothing to set "
         "up in the browser. This page (" GW_IP_STR ") is never proxied. "
         "HTTPS goes through as a CONNECT tunnel, so the HTTPS presets need "
-        "their root CA installed on the phone (from 15pmm01.com). Presets are "
-        "from 15pmm01.com/wap/en.</small></p><hr>"
+        "their root CA installed on the phone (from 15pmm01.com). RetroWEB "
+        "is HTTP only: with it on, HTTPS goes direct. Presets are from "
+        "15pmm01.com/wap/en and retroweb.bjrno.com.</small></p><hr>"
         "<a href='/'>Status</a>"
         "<br>" PAGE_FOOTER
         "</body></html>",

@@ -22,6 +22,9 @@
  *     or the ClientHello (HTTPS), connects to the proxy, sends the rewritten
  *     head or a CONNECT, then copies bytes both ways.
  *
+ * A preset marked http_only (a proxy that refuses CONNECT) leaves port 443
+ * alone: the phone's HTTPS goes direct, as with the proxy off.
+ *
  * Traffic to 192.168.7.1 (web UI, DNS) is never touched, and nothing is
  * intercepted while WiFi is down, so the captive fallback to the web UI keeps
  * working.
@@ -76,15 +79,29 @@ static const char *TAG = "proxy";
 #define PHONE_ADDR_N PP_HTONL(LWIP_MAKEU32(GW_IP0, GW_IP1, GW_IP2, GW_PEER_IP3))
 
 /* From https://15pmm01.com/wap/en/. Only the HTTP proxies: the WAP gateways
- * there (port 9201) speak WSP over UDP, not HTTP. */
+ * there (port 9201) speak WSP over UDP, not HTTP. Then RetroWEB, from
+ * http://retroweb.bjrno.com/, which picks a page profile from the browser's
+ * User-Agent (passed through unchanged by http_rewrite) and answers CONNECT
+ * with 400, so it is HTTP only. */
 static const proxy_preset_t presets[] = {
-    { "HTTP Pass",       "176.103.221.33", 3130, "suggested for most vintage phones" },
-    { "HTTP Lite",       "176.103.221.33", 3129, "low-memory phones, text output" },
-    { "HTTP Extra Lite", "176.103.221.33", 3131, "very memory-limited phones, text output" },
-    { "HTTP WML",        "176.103.221.33", 3132, "phones without HTML support" },
-    { "HTTPS",           "176.103.221.33", 3128, "needs its root CA installed on the phone" },
-    { "HTTPS Legacy",    "176.103.221.33", 3127, "fallback for 3128, its own root CA" },
+    { "HTTP Pass",       "176.103.221.33", 3130, "suggested for most vintage phones", false },
+    { "HTTP Lite",       "176.103.221.33", 3129, "low-memory phones, text output", false },
+    { "HTTP Extra Lite", "176.103.221.33", 3131, "very memory-limited phones, text output", false },
+    { "HTTP WML",        "176.103.221.33", 3132, "phones without HTML support", false },
+    { "HTTPS",           "176.103.221.33", 3128, "needs its root CA installed on the phone", false },
+    { "HTTPS Legacy",    "176.103.221.33", 3127, "fallback for 3128, its own root CA", false },
+    { "RetroWEB",        "retroweb.bjrno.com", 8081,
+      "simplified HTML tuned to the phone's browser; HTTP only, HTTPS goes direct", true },
 };
+
+/* true if host:port is a preset that can't tunnel HTTPS */
+static bool host_http_only(const char *host, uint16_t port) {
+    for (int i = 0; i < proxy_preset_count(); i++) {
+        if (presets[i].port == port && strcmp(presets[i].host, host) == 0)
+            return presets[i].http_only;
+    }
+    return false;
+}
 
 int proxy_preset_count(void) {
     return (int)(sizeof(presets) / sizeof(presets[0]));
@@ -106,6 +123,7 @@ static bool     px_on = false;
 static char     px_host[PROXY_HOST_MAX];
 static uint16_t px_port = 0;
 static volatile bool px_ready = false;      /* on, with a host and port */
+static volatile bool px_tls = false;        /* ready, and port 443 goes too */
 static volatile int  active_sessions = 0;
 
 void proxy_get(bool *on, char *host, int host_len, uint16_t *port) {
@@ -122,6 +140,7 @@ void proxy_set(bool on, const char *host, uint16_t port) {
     strlcpy(px_host, host, sizeof(px_host));
     px_port = port;
     px_ready = px_on && px_host[0] && px_port;
+    px_tls = px_ready && !host_http_only(px_host, px_port);
     taskEXIT_CRITICAL(&state_mux);
 
     nvs_handle_t h;
@@ -156,6 +175,7 @@ static void settings_load(void) {
     strlcpy(px_host, host, sizeof(px_host));
     px_port = port;
     px_ready = px_on && px_host[0] && px_port;
+    px_tls = px_ready && !host_http_only(px_host, px_port);
     taskEXIT_CRITICAL(&state_mux);
 }
 
@@ -297,9 +317,11 @@ int proxy_ip4_input_hook(struct pbuf *p, struct netif *inp) {
     uint16_t sport = lwip_ntohs(th->src);
     uint16_t relay = dport == 80 ? RELAY_HTTP_PORT : RELAY_TLS_PORT;
     bool syn = (TCPH_FLAGS(th) & (TCP_SYN | TCP_ACK)) == TCP_SYN;
-    /* New flows only while there is somewhere to send them. Read before
-     * taking flow_mux: get_wifi_connected takes state_mux. */
-    bool intercept = syn && px_ready && get_wifi_connected();
+    /* New flows only while there is somewhere to send them, and port 443
+     * only if the proxy can tunnel it. Read before taking flow_mux:
+     * get_wifi_connected takes state_mux. */
+    bool intercept = syn && px_ready && (dport == 80 || px_tls) &&
+                     get_wifi_connected();
     uint32_t dst = ip->dest.addr;
     uint32_t now = now_ms();
     bool match = false;

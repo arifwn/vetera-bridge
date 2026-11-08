@@ -47,7 +47,8 @@ apps on the phone — just gnubox's one-time CommDB edit.
 - **HTTP proxy redirect** on `/proxy`: sends every connection the phone
   opens to port 80 or 443 through an upstream HTTP proxy, with nothing to set
   up on the phone. Comes with the retro-phone proxies from
-  [15pmm01.com](https://15pmm01.com/wap/en/) as presets, see
+  [15pmm01.com](https://15pmm01.com/wap/en/) and
+  [RetroWEB](http://retroweb.bjrno.com/) as presets, see
   [HTTP proxy](#http-proxy)
 - **Debug logging switches** on `/debug`: HCI packet trace, BTstack's internal
   log and verbose bridge events, to the USB serial console. Kept across
@@ -444,7 +445,11 @@ With a proxy on:
   own connection (`Connection: close`).
 - Every connection to **port 443** goes through the proxy as a `CONNECT`
   tunnel, to the host named in the TLS ClientHello (SNI), or to the IP the
-  phone dialled if it sends none.
+  phone dialled if it sends none. The exception is an HTTP-only preset
+  (RetroWEB): with it on, port 443 is left alone and goes direct.
+- The phone's request headers, `User-Agent` included, reach the proxy
+  unchanged. Only the connection-management ones (`Connection`,
+  `Proxy-Connection`, `Keep-Alive`) are replaced.
 - **The bridge itself (`http://192.168.7.1`) is never proxied**, nor is DNS
   or any other port. While WiFi is down nothing is redirected, so the captive
   redirect to the setup pages still works.
@@ -461,6 +466,20 @@ Presets, from [15pmm01.com](https://15pmm01.com/wap/en/):
 | HTTP WML | `176.103.221.33:3132` | phones without HTML support |
 | HTTPS | `176.103.221.33:3128` | needs its root CA installed on the phone |
 | HTTPS Legacy | `176.103.221.33:3127` | fallback for 3128, with its own root CA |
+
+And from [RetroWEB](http://retroweb.bjrno.com/):
+
+| Preset | Proxy | Notes |
+|---|---|---|
+| RetroWEB | `retroweb.bjrno.com:8081` | simplified HTML tuned to the phone's browser, HTTP only |
+
+RetroWEB turns modern pages into simple legacy HTML, converts images to small
+GIFs and splits large pages, picking a profile from the browser's
+`User-Agent`. It fetches https:// sites itself, so plain http:// links work
+for them too. It does not support `CONNECT`, so while it is on the bridge
+sends only port 80 through it and the phone's own HTTPS connections go
+direct, as with the proxy off. Its page `http://<any site>/.retroweb/client-info`
+shows which browser and profile it detected.
 
 **Custom** takes any host name or IP and port. The WAP gateways on that page
 (port 9201) are not HTTP proxies and can't be used here. The HTTPS presets
