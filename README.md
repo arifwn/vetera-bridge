@@ -432,6 +432,35 @@ Notes:
   going online, and 8.0 stalls at its first progress bar. 5.x to 7.x
   haven't been tried.
 
+## Phone setup (S60 3rd Edition FP2: Nokia E5-00 and C5-00. Untested here)
+
+[GnuBox for S60 3rd Edition FP2](https://github.com/thangnd58/gnu-box-s60v3-fp2)
+by thangnd58 is a port of gnubox made for this bridge and tested by its author
+on the Nokia E5-00. It creates an access point **Bt** that shows up as a
+packet data (GPRS) access point, so the built-in Web browser can pick it. It
+hasn't been tested with this bridge here yet, so reports are welcome.
+
+The Bluetooth security setting these phones need isn't confirmed yet. Start
+with **off**, the default, and if the browser can't connect, switch the
+bridge to **on** (see [Bluetooth security](#bluetooth-security)).
+
+1. **SIM**: keep a SIM in the phone, even a dead or inactive one, so it boots
+   in the General profile rather than Offline.
+2. **Pair**: Menu → Settings → Connectivity → Bluetooth → pair with
+   **Vetera Bridge &lt;number&gt;** → PIN `0000`.
+3. **Install GnuBox**: download `gnubox_s60v3_vetera.sisx` from the
+   repository's
+   [release folder](https://github.com/thangnd58/gnu-box-s60v3-fp2/tree/master/release),
+   install it on the phone and start **GnuBox**.
+4. In GnuBox, `Options → Create records` ("Records created OK!"), then
+   `Options → Set to GPRS` ("Set to GPRS OK!").
+5. **Check the access point**: Menu → Settings → Connectivity → Destinations.
+   **Bt** should be listed under Internet. If it is under Uncategorised, move
+   it to Internet.
+6. Open the Web browser, load `http://192.168.7.1` and pick **Bt** as the
+   connection. This works before any WiFi is configured. Add your WiFi
+   network(s) on the `/wifi` page.
+
 ## HTTP proxy
 
 The `/proxy` page can send the phone's web traffic through an HTTP proxy, for
