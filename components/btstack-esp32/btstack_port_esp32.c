@@ -149,7 +149,9 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                     params = hci_event_command_complete_get_return_parameters(packet);
                     if((params[0] == 0) && (size >= 13)) {
                         reverse_48(&params[2], static_address);
+#ifdef ENABLE_BLE
                         gap_random_address_set(static_address);
+#endif
                     }
                     break;
                 default:

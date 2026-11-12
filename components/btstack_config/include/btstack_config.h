@@ -20,7 +20,6 @@
 #define ENABLE_LOG_INFO
 #define ENABLE_PRINTF_HEXDUMP
 
-#define ENABLE_BLE
 #define ENABLE_CLASSIC
 
 // === CLASSIC ===
@@ -50,18 +49,6 @@
 // longest ago is evicted (BTstack: least recently stored, not used).
 #define NVM_NUM_LINK_KEYS 16
 
-#endif
-
-// === LE (unused but keeps the proven port config intact) ===
-#ifdef ENABLE_BLE
-#define ENABLE_ATT_DELAYED_RESPONSE
-#define ENABLE_L2CAP_LE_CREDIT_BASED_FLOW_CONTROL_MODE
-#define ENABLE_LE_CENTRAL
-#define ENABLE_LE_DATA_LENGTH_EXTENSION
-#define ENABLE_LE_PERIPHERAL
-#define ENABLE_LE_SECURE_CONNECTIONS
-#define ENABLE_MICRO_ECC_FOR_LE_SECURE_CONNECTIONS
-#define NVM_NUM_DEVICE_DB_ENTRIES 8
 #endif
 
 #endif

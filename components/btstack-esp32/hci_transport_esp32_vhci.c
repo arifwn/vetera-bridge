@@ -235,6 +235,14 @@ static int transport_open(void){
             return -1;
         }
 #endif
+#if !defined(ENABLE_BLE) && CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY
+        //  Classic-only on ESP32 - release memory used for LE mode
+        ret = esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+        if (ret) {
+            log_error("Bluetooth controller release LE memory failed: %s", esp_err_to_name(ret));
+            return -1;
+        }
+#endif
 #endif
 
         esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();

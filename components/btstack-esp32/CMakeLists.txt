@@ -50,14 +50,10 @@ set(src_dirs
     ${BTSTACK_ROOT}/3rd-party/lc3-google/src
     ${BTSTACK_ROOT}/3rd-party/lwip/dhcp-server
     ${BTSTACK_ROOT}/3rd-party/md5
-    ${BTSTACK_ROOT}/3rd-party/micro-ecc
     ${BTSTACK_ROOT}/3rd-party/qr-code-generator
     ${BTSTACK_ROOT}/3rd-party/yxml
-    ${BTSTACK_ROOT}/src/ble/gatt-service
     ${BTSTACK_ROOT}/src/classic
     ${BTSTACK_ROOT}/chipset/zephyr
-    ${BTSTACK_ROOT}/src/ble
-    ${BTSTACK_ROOT}/src/le-audio
     ${BTSTACK_ROOT}/src
     ${BTSTACK_ROOT}/platform/embedded
     ${BTSTACK_ROOT}/platform/freertos
