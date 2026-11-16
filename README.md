@@ -39,8 +39,9 @@ apps on the phone — just gnubox's one-time CommDB edit.
 - Watchdogs: WiFi-stuck recovery, DNS-hang restart, low-heap reboot
 - **Bluetooth security switch** on `/security`: makes the bridge authenticate
   and encrypt the link before a phone opens the serial channel. S60 2nd
-  Edition phones with gnubox need it on; S60 1st Edition phones and the
-  Series 80 Communicators need it off, the default.
+  Edition phones with gnubox need it on; S60 1st Edition phones, the
+  Series 80 Communicators and the UIQ Sony Ericsson P800 need it off, the
+  default.
   **Auto** decides per phone from its Bluetooth name, so both kinds work on
   one bridge. Also switchable from the board's BOOT button, see
   [Bluetooth security](#bluetooth-security)
@@ -432,6 +433,37 @@ Notes:
   going online, and 8.0 stalls at its first progress bar. 5.x to 7.x
   haven't been tried.
 
+## Phone setup (UIQ: Sony Ericsson P800)
+
+Leave the bridge's Bluetooth security switch (`/security`) on **off**, the
+default. Auto doesn't recognise UIQ phones by name, so it would ask the P800
+for security. See [Bluetooth security](#bluetooth-security).
+
+The P800 needs -xan-'s UIQ build of gnubox (v1.0, January 2005). Its
+original site is gone, but the Wayback Machine keeps a
+[copy of the page](https://web.archive.org/web/20080701040859/http://gnubox.dnsalias.org/gnubox/)
+and of
+[`gnubox_p800.sis`](https://web.archive.org/web/20080701040859/http://gnubox.dnsalias.org/gnubox/gnubox_p800.sis)
+itself. The same page has `gnubox_p900.sis` and `gnubox_p910.sis` for the
+P900 and P910, which haven't been tried with the bridge.
+
+1. **Pair** the P800 with **Vetera Bridge &lt;number&gt;** → PIN `0000`.
+2. **Create an internet account** named `Bt`: dial-up (CSD), not GPRS, with
+   a phone number that can't be dialled. gnubox redirects this account to
+   Bluetooth.
+3. **Install** `gnubox_p800.sis` and start **GnuBox**.
+4. `auto set modem ID` (once after installing).
+5. `2box Bluetooth` → `Serial port` → choose the bridge. When gnubox asks
+   about encryption, answer **No**, to match the bridge's security switch
+   being off.
+6. Set `Bt` as the internet account in the browser, load
+   `http://192.168.7.1` and add your WiFi network(s) on the `/wifi` page.
+   This works before any WiFi is configured.
+
+The archived page explains the other menu entries, including
+`auto unset modem ID`, which undoes step 4 and gives the phone its own
+modem back for real data calls.
+
 ## Phone setup (S60 3rd Edition FP2: Nokia E5-00 and C5-00. Untested here)
 
 [GnuBox for S60 3rd Edition FP2](https://github.com/thangnd58/gnu-box-s60v3-fp2)
@@ -526,8 +558,8 @@ while a proxy is on. Switch it off on `/proxy` to go direct again.
 
 The `/security` page has three settings:
 
-- **Off** (default): no phone gets security. S60 1st Edition phones and the
-  Series 80 Communicators connect this way.
+- **Off** (default): no phone gets security. S60 1st Edition phones, the
+  Series 80 Communicators and the Sony Ericsson P800 connect this way.
 - **On**: every phone gets authentication and encryption, which S60 2nd
   Edition needs.
 - **Auto**: when a phone opens the serial channel, the bridge asks
@@ -701,9 +733,9 @@ and modem sleep (`BTDM_CTRL_MODEM_SLEEP`, not implicated by this dump).
 
 Builds clean against ESP-IDF v5.4.4 + BTstack v1.8.2. Validated end-to-end
 against real S60v1 hardware (pairing → mRouter bootstrap → gnubox dial →
-PPP → web UI → WiFi NAT), and on the S60 2nd Edition FP1 Nokia 7610 with
-the `/security` switch on. Auto mode tested with an N-Gage QD and a 7610
-taking turns on the same bridge. Bring-up reports for other phones welcome.
+PPP → web UI → WiFi NAT), on the S60 2nd Edition FP1 Nokia 7610 with the
+`/security` switch on, and on the UIQ Sony Ericsson P800 with it off. Auto
+mode tested with an N-Gage QD and a 7610 taking turns on the same bridge. Bring-up reports for other phones welcome.
 
 ## Credits & license
 
